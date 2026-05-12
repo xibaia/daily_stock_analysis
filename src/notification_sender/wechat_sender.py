@@ -34,7 +34,9 @@ class WechatSender:
         """
         self._wechat_url = config.wechat_webhook_url
         self._wechat_max_bytes = getattr(config, 'wechat_max_bytes', 4000)
-        self._wechat_msg_type = getattr(config, 'wechat_msg_type', 'markdown')
+        self._wechat_msg_type = (
+            getattr(config, 'wechat_msg_type', 'markdown_v2') or 'markdown_v2'
+        ).strip().lower()
         self._webhook_verify_ssl = getattr(config, 'webhook_verify_ssl', True)
         
     def send_to_wechat(self, content: str, *, timeout_seconds: Optional[float] = None) -> bool:
@@ -42,8 +44,16 @@ class WechatSender:
         推送消息到企业微信机器人
         
         企业微信 Webhook 消息格式：
-        支持 markdown 类型以及 text 类型, markdown 类型在微信中无法展示，可以使用 text 类型,
-        markdown 类型会解析 markdown 格式,text 类型会直接发送纯文本。
+        支持 markdown_v2、markdown 以及 text 类型。markdown_v2 是默认企业微信
+        Markdown 消息类型；text 类型会直接发送纯文本。
+
+        markdown_v2 类型示例：
+        {
+            "msgtype": "markdown_v2",
+            "markdown_v2": {
+                "content": "## 标题\n\n内容"
+            }
+        }
 
         markdown 类型示例：
         {
@@ -78,7 +88,7 @@ class WechatSender:
         if self._wechat_msg_type == 'text':
             max_bytes = min(self._wechat_max_bytes, 2000)  # 预留一定字节给系统/分页标记
         else:
-            max_bytes = self._wechat_max_bytes  # markdown 默认 4000 字节
+            max_bytes = self._wechat_max_bytes  # markdown/markdown_v2 默认 4000 字节
         
         # 检查字节长度，超长则分批发送
         content_bytes = len(content.encode('utf-8'))
@@ -182,10 +192,16 @@ class WechatSender:
                     "content": content
                 }
             }
-        else:
+        if self._wechat_msg_type == 'markdown':
             return {
                 "msgtype": "markdown",
                 "markdown": {
                     "content": content
                 }
             }
+        return {
+            "msgtype": "markdown_v2",
+            "markdown_v2": {
+                "content": content
+            }
+        }

@@ -53,6 +53,66 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
 
     @patch("src.config.setup_env")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_wechat_defaults_to_markdown_v2_with_markdown_byte_limit(
+        self, _mock_parse_litellm_yaml, _mock_setup_env
+    ):
+        with patch.dict(os.environ, {"STOCK_LIST": "600519"}, clear=True):
+            config = Config._load_from_env()
+
+        self.assertEqual(config.wechat_msg_type, "markdown_v2")
+        self.assertEqual(config.wechat_max_bytes, 4000)
+
+    @patch("src.config.setup_env")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_wechat_text_defaults_to_text_byte_limit(
+        self, _mock_parse_litellm_yaml, _mock_setup_env
+    ):
+        with patch.dict(
+            os.environ,
+            {"STOCK_LIST": "600519", "WECHAT_MSG_TYPE": "text"},
+            clear=True,
+        ):
+            config = Config._load_from_env()
+
+        self.assertEqual(config.wechat_msg_type, "text")
+        self.assertEqual(config.wechat_max_bytes, 2048)
+
+    @patch("src.config.setup_env")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_wechat_explicit_max_bytes_is_preserved(
+        self, _mock_parse_litellm_yaml, _mock_setup_env
+    ):
+        with patch.dict(
+            os.environ,
+            {
+                "STOCK_LIST": "600519",
+                "WECHAT_MSG_TYPE": "markdown",
+                "WECHAT_MAX_BYTES": "3000",
+            },
+            clear=True,
+        ):
+            config = Config._load_from_env()
+
+        self.assertEqual(config.wechat_msg_type, "markdown")
+        self.assertEqual(config.wechat_max_bytes, 3000)
+
+    @patch("src.config.setup_env")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_wechat_invalid_msg_type_falls_back_to_markdown_v2(
+        self, _mock_parse_litellm_yaml, _mock_setup_env
+    ):
+        with patch.dict(
+            os.environ,
+            {"STOCK_LIST": "600519", "WECHAT_MSG_TYPE": "html"},
+            clear=True,
+        ):
+            config = Config._load_from_env()
+
+        self.assertEqual(config.wechat_msg_type, "markdown_v2")
+        self.assertEqual(config.wechat_max_bytes, 4000)
+
+    @patch("src.config.setup_env")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     def test_schedule_run_immediately_falls_back_to_legacy_run_immediately(
         self,
         _mock_parse_yaml,

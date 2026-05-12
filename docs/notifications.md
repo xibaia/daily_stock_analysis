@@ -6,7 +6,7 @@
 
 | 渠道 | 类型 | Minimal key | Advanced key | 说明 |
 | --- | --- | --- | --- | --- |
-| 企业微信 | 静态配置 | `WECHAT_WEBHOOK_URL` | `WECHAT_MSG_TYPE` | 配置后参与批量通知发送 |
+| 企业微信 | 静态配置 | `WECHAT_WEBHOOK_URL` | `WECHAT_MSG_TYPE`, `WECHAT_MAX_BYTES` | 配置后参与批量通知发送；默认使用 `markdown_v2` |
 | 飞书 Webhook | 静态配置 | `FEISHU_WEBHOOK_URL` | `FEISHU_WEBHOOK_SECRET`, `FEISHU_WEBHOOK_KEYWORD` | `FEISHU_APP_ID` / `FEISHU_APP_SECRET` 不会单独开启群 Webhook 推送 |
 | Telegram | 静态配置 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | `TELEGRAM_MESSAGE_THREAD_ID` | token 与 chat id 必须同时存在 |
 | 邮件 | 静态配置 | `EMAIL_SENDER`, `EMAIL_PASSWORD` | `EMAIL_RECEIVERS`, `EMAIL_SENDER_NAME` | `EMAIL_RECEIVERS` 留空时发给自己 |
@@ -28,6 +28,22 @@
 - P3 的 `NOTIFICATION_*_CHANNELS` 属于 Advanced key：只收窄已启用渠道，不会单独启用渠道。
 - P4 的 `NOTIFICATION_DEDUP_TTL_SECONDS`、`NOTIFICATION_COOLDOWN_SECONDS`、`NOTIFICATION_QUIET_HOURS`、`NOTIFICATION_TIMEZONE`、`NOTIFICATION_MIN_SEVERITY`、`NOTIFICATION_DAILY_DIGEST_ENABLED` 属于 Advanced key：只影响已启用静态渠道的发送策略，不会单独启用渠道。
 - 长尾渠道、更细粒度路由、跨进程降噪和真实每日摘要不在 P4 范围内；相关配置如未来引入，应先更新本文档、`.env.example`、Web 元数据与回归测试。
+
+## 企业微信消息格式
+
+企业微信机器人默认使用 `WECHAT_MSG_TYPE=markdown_v2`，发送 payload 为 `{"msgtype":"markdown_v2","markdown_v2":{"content":"..."}}`。如需兼容旧行为，可显式设置：
+
+```env
+WECHAT_MSG_TYPE=markdown
+```
+
+或发送纯文本：
+
+```env
+WECHAT_MSG_TYPE=text
+```
+
+`WECHAT_MAX_BYTES` 未配置时，`text` 默认 2048 字节，`markdown` / `markdown_v2` 默认 4000 字节；超出后会沿用现有分片发送逻辑。`MARKDOWN_TO_IMAGE_CHANNELS=wechat` 的图片发送路径不受该配置影响，显式启用图片时仍优先发送图片。
 
 ## GitHub Actions 映射
 

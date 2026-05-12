@@ -236,6 +236,8 @@ daily_stock_analysis/
 | 变量名 | 说明 | 必填 |
 |--------|------|:----:|
 | `WECHAT_WEBHOOK_URL` | 企业微信机器人 Webhook URL | 可选 |
+| `WECHAT_MSG_TYPE` | 企业微信消息类型：`markdown_v2`（默认）、`markdown`、`text` | 可选 |
+| `WECHAT_MAX_BYTES` | 企业微信单条消息分片字节上限；未配置时 `markdown_v2`/`markdown` 默认 4000，`text` 默认 2048 | 可选 |
 | `FEISHU_WEBHOOK_URL` | 飞书机器人 Webhook URL | 可选 |
 | `FEISHU_WEBHOOK_SECRET` | 飞书机器人签名密钥（仅在机器人安全设置启用“签名校验”时填写） | 可选 |
 | `FEISHU_WEBHOOK_KEYWORD` | 飞书机器人关键词（仅在机器人安全设置启用“关键词”时填写） | 可选 |
@@ -690,6 +692,8 @@ crontab -e
 1. 在企业微信群聊中添加"群机器人"
 2. 复制 Webhook URL
 3. 设置 `WECHAT_WEBHOOK_URL`
+
+默认发送企业微信 `markdown_v2` 消息。需要兼容旧格式时可设置 `WECHAT_MSG_TYPE=markdown`，需要纯文本时可设置 `WECHAT_MSG_TYPE=text`。超长报告会按 `WECHAT_MAX_BYTES` 自动分片；未显式配置时，Markdown 默认 4000 字节，text 默认 2048 字节。
 
 ### 飞书
 

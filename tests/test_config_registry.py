@@ -108,6 +108,44 @@ class TestFeishuWebhookFieldsRegistered(unittest.TestCase):
             self.assertIn(key, field_keys, f"{key} missing from schema response")
 
 
+class TestWechatFieldsRegistered(unittest.TestCase):
+    """WeChat format controls must be explicit for settings UI."""
+
+    _WECHAT_KEYS = ("WECHAT_WEBHOOK_URL", "WECHAT_MSG_TYPE", "WECHAT_MAX_BYTES")
+
+    def test_field_definitions_exist(self):
+        for key in self._WECHAT_KEYS:
+            field = get_field_definition(key)
+            self.assertEqual(field["category"], "notification", f"{key} category")
+            self.assertNotEqual(
+                field["display_order"], 9000,
+                f"{key} should be explicitly registered, not inferred",
+            )
+
+    def test_msg_type_options_include_markdown_v2_default(self):
+        field = get_field_definition("WECHAT_MSG_TYPE")
+        self.assertEqual(field["default_value"], "markdown_v2")
+        self.assertEqual(field["options"], ["markdown_v2", "markdown", "text"])
+        self.assertEqual(field["ui_control"], "select")
+
+    def test_max_bytes_is_numeric(self):
+        field = get_field_definition("WECHAT_MAX_BYTES")
+        self.assertEqual(field["data_type"], "integer")
+        self.assertEqual(field["ui_control"], "number")
+        self.assertEqual(field["default_value"], "4000")
+
+    def test_schema_response_includes_wechat_fields(self):
+        schema = build_schema_response()
+        notification_cat = next(
+            (c for c in schema["categories"] if c["category"] == "notification"),
+            None,
+        )
+        self.assertIsNotNone(notification_cat, "notification category missing")
+        field_keys = {f["key"] for f in notification_cat["fields"]}
+        for key in self._WECHAT_KEYS:
+            self.assertIn(key, field_keys, f"{key} missing from schema response")
+
+
 class TestAstrBotFieldsRegistered(unittest.TestCase):
     """AstrBot config keys must be explicitly registered for settings UI."""
 

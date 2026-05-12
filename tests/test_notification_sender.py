@@ -126,6 +126,20 @@ class TestWechatSender(unittest.TestCase):
         result = sender.send_to_wechat("hello")
         self.assertTrue(result)
 
+    def test_gen_wechat_payload_defaults_to_markdown_v2(self):
+        cfg = _config(wechat_webhook_url="u")
+        sender = WechatSender(cfg)
+        payload = sender._gen_wechat_payload("## title\nbody")
+        self.assertEqual(payload["msgtype"], "markdown_v2")
+        self.assertEqual(payload["markdown_v2"]["content"], "## title\nbody")
+
+    def test_gen_wechat_payload_markdown_v2(self):
+        cfg = _config(wechat_webhook_url="u", wechat_msg_type="markdown_v2")
+        sender = WechatSender(cfg)
+        payload = sender._gen_wechat_payload("## title\nbody")
+        self.assertEqual(payload["msgtype"], "markdown_v2")
+        self.assertEqual(payload["markdown_v2"]["content"], "## title\nbody")
+
     def test_gen_wechat_payload_markdown(self):
         cfg = _config(wechat_webhook_url="u", wechat_msg_type="markdown")
         sender = WechatSender(cfg)
@@ -139,6 +153,26 @@ class TestWechatSender(unittest.TestCase):
         payload = sender._gen_wechat_payload("plain")
         self.assertEqual(payload["msgtype"], "text")
         self.assertEqual(payload["text"]["content"], "plain")
+
+    @mock.patch("src.notification_sender.wechat_sender.time.sleep")
+    @mock.patch("src.notification_sender.wechat_sender.requests.post")
+    def test_chunked_send_uses_configured_message_type(self, mock_post, _mock_sleep):
+        mock_post.return_value = _response(200, {"errcode": 0})
+        cfg = _config(
+            wechat_webhook_url="https://wechat.example/hook",
+            wechat_msg_type="markdown_v2",
+            wechat_max_bytes=80,
+        )
+        sender = WechatSender(cfg)
+
+        result = sender.send_to_wechat("标题\n" + "内容" * 60)
+
+        self.assertTrue(result)
+        self.assertGreater(mock_post.call_count, 1)
+        for call in mock_post.call_args_list:
+            payload = call.kwargs["json"]
+            self.assertEqual(payload["msgtype"], "markdown_v2")
+            self.assertIn("content", payload["markdown_v2"])
 
     @mock.patch("src.notification_sender.wechat_sender.requests.post")
     def test_send_wechat_image_over_limit_returns_false(self, mock_post):

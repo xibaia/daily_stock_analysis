@@ -799,9 +799,9 @@ class Config:
 
     # 消息长度限制（字节）- 超长自动分批发送
     feishu_max_bytes: int = 20000  # 飞书限制约 20KB，默认 20000 字节
-    wechat_max_bytes: int = 4000   # 企业微信限制 4096 字节，默认 4000 字节
+    wechat_max_bytes: int = 4000   # 企业微信 Markdown 限制 4096 字节，默认 4000 字节
     discord_max_words: int = 2000  # Discord 限制 2000 字，默认 2000 字
-    wechat_msg_type: str = "markdown"  # 企业微信消息类型，默认 markdown 类型
+    wechat_msg_type: str = "markdown_v2"  # 企业微信消息类型，默认 markdown_v2 类型
 
     # Markdown 转图片（Issue #289）：对不支持 Markdown 的渠道以图片发送
     markdown_to_image_channels: List[str] = field(default_factory=list)  # 逗号分隔：telegram,wechat,custom,email
@@ -1285,8 +1285,14 @@ class Config:
         )
 
         # 企微消息类型与最大字节数逻辑
-        wechat_msg_type = os.getenv('WECHAT_MSG_TYPE', 'markdown')
-        wechat_msg_type_lower = wechat_msg_type.lower()
+        wechat_msg_type = os.getenv('WECHAT_MSG_TYPE', 'markdown_v2')
+        wechat_msg_type_lower = (wechat_msg_type or '').strip().lower()
+        if wechat_msg_type_lower not in {'text', 'markdown', 'markdown_v2'}:
+            logger.warning(
+                "WECHAT_MSG_TYPE=%r is unsupported; falling back to markdown_v2",
+                wechat_msg_type,
+            )
+            wechat_msg_type_lower = 'markdown_v2'
         wechat_max_bytes_env = os.getenv('WECHAT_MAX_BYTES')
         if wechat_max_bytes_env not in (None, ''):
             wechat_max_bytes = parse_env_int(

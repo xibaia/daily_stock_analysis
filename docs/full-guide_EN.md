@@ -208,6 +208,8 @@ For the P0 notification baseline and diagnostics, see [Notification Baseline](no
 | Variable | Description | Required |
 |--------|------|:----:|
 | `WECHAT_WEBHOOK_URL` | WeChat Work Bot Webhook URL | Optional |
+| `WECHAT_MSG_TYPE` | WeChat Work message type: `markdown_v2` (default), `markdown`, or `text` | Optional |
+| `WECHAT_MAX_BYTES` | Per-message chunking byte limit. Defaults to 4000 for `markdown_v2`/`markdown`, 2048 for `text` | Optional |
 | `FEISHU_WEBHOOK_URL` | Feishu Bot Webhook URL | Optional |
 | `FEISHU_WEBHOOK_SECRET` | Feishu bot signing secret (only for webhook bots with Signature security enabled) | Optional |
 | `FEISHU_WEBHOOK_KEYWORD` | Feishu bot keyword (only for webhook bots with Keyword security enabled) | Optional |
@@ -584,6 +586,8 @@ The P0 notification channel matrix and `--check-notify` CLI details are document
 1. Add "Group Bot" in WeChat Work group chat
 2. Copy Webhook URL
 3. Set `WECHAT_WEBHOOK_URL`
+
+The default format is WeChat Work `markdown_v2`. Set `WECHAT_MSG_TYPE=markdown` to keep the legacy markdown payload, or `WECHAT_MSG_TYPE=text` for plain text. Long reports are chunked by `WECHAT_MAX_BYTES`; when unset, Markdown defaults to 4000 bytes and text defaults to 2048 bytes.
 
 ### Feishu
 
