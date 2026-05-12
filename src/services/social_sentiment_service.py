@@ -14,6 +14,7 @@ Only activates for US stock codes (AAPL, TSLA, etc.).
 import logging
 import threading
 import time
+from collections import OrderedDict
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -73,7 +74,7 @@ class SocialSentimentService:
         self._api_key = (api_key or "").strip() or None
         self._api_url = (api_url or "https://api.adanos.org").rstrip("/")
         # Simple in-memory cache: {"key": (timestamp, data)}
-        self._cache: Dict[str, tuple] = {}
+        self._cache: Dict[str, tuple] = OrderedDict()
         self._cache_lock = threading.RLock()
         self._cache_inflight: Dict[str, threading.Event] = {}
 
@@ -134,6 +135,8 @@ class SocialSentimentService:
             if data is not None:
                 with self._cache_lock:
                     self._cache[cache_key] = (time.monotonic(), data)
+                    while len(self._cache) > 200:
+                        self._cache.popitem(last=False)
             return data
 
         try:
@@ -141,6 +144,8 @@ class SocialSentimentService:
             if data is not None:
                 with self._cache_lock:
                     self._cache[cache_key] = (time.monotonic(), data)
+                    while len(self._cache) > 200:
+                        self._cache.popitem(last=False)
             return data
         finally:
             with self._cache_lock:

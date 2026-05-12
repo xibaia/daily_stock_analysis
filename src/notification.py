@@ -17,6 +17,7 @@ A股自选股智能分析系统 - 通知层
 from __future__ import annotations
 
 import logging
+from collections import OrderedDict
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Tuple, TYPE_CHECKING
 from enum import Enum
@@ -160,7 +161,7 @@ class NotificationService(
 
         # 仅分析结果摘要（Issue #262）：true 时只推送汇总，不含个股详情
         self._report_summary_only = getattr(config, 'report_summary_only', False)
-        self._history_compare_cache: Dict[Tuple[int, Tuple[Tuple[str, str], ...]], Dict[str, List[Dict[str, Any]]]] = {}
+        self._history_compare_cache: Dict[Tuple[int, Tuple[Tuple[str, str], ...]], Dict[str, List[Dict[str, Any]]]] = OrderedDict()
 
         # 初始化各渠道
         AstrbotSender.__init__(self, config)
@@ -249,6 +250,8 @@ class NotificationService(
             history_by_code = {}
 
         self._history_compare_cache[cache_key] = history_by_code
+        while len(self._history_compare_cache) > 50:
+            self._history_compare_cache.popitem(last=False)
         return {"history_by_code": history_by_code}
 
     def generate_aggregate_report(

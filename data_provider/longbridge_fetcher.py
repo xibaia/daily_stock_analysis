@@ -23,6 +23,7 @@ import logging
 import os
 import time
 import threading
+from collections import OrderedDict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -285,7 +286,7 @@ class LongbridgeFetcher(BaseFetcher):
         self._available = None
         self._cooldown_until = 0.0
         # {symbol: (StaticInfo, timestamp)}
-        self._static_cache: Dict[str, Any] = {}
+        self._static_cache: Dict[str, Any] = OrderedDict()
         self._static_cache_lock = threading.Lock()
 
     def _is_connection_error(self, exc: Exception) -> bool:
@@ -453,6 +454,8 @@ class LongbridgeFetcher(BaseFetcher):
                 if ttl > 0:
                     with self._static_cache_lock:
                         self._static_cache[symbol] = (info, now)
+                        while len(self._static_cache) > 1000:
+                            self._static_cache.popitem(last=False)
                 return info
         except Exception as e:
             logger.debug(f"[Longbridge] static_info({symbol}) 失败: {e}")

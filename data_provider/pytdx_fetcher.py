@@ -17,6 +17,7 @@ PytdxFetcher - 通达信数据源 (Priority 2)
 import logging
 import re
 import time
+from collections import OrderedDict
 from contextlib import contextmanager
 from typing import Optional, Generator, List, Tuple
 
@@ -148,7 +149,7 @@ class PytdxFetcher(BaseFetcher):
         self._connected = False
         self._current_host_idx = 0
         self._stock_list_cache = None  # 股票列表缓存
-        self._stock_name_cache = {}    # 股票名称缓存 {code: name}
+        self._stock_name_cache = OrderedDict()  # 股票名称缓存 {code: name}，上限 2000
         self._unavailable_until = 0.0
         self._last_unavailable_reason = ""
 
@@ -423,13 +424,17 @@ class PytdxFetcher(BaseFetcher):
                 name = self._stock_list_cache.get(code)
                 if name:
                     self._stock_name_cache[stock_code] = name
+                    while len(self._stock_name_cache) > 2000:
+                        self._stock_name_cache.popitem(last=False)
                     return name
-                
+
                 # 尝试使用 get_finance_info
                 finance_info = api.get_finance_info(market, code)
                 if finance_info and 'name' in finance_info:
                     name = finance_info['name']
                     self._stock_name_cache[stock_code] = name
+                    while len(self._stock_name_cache) > 2000:
+                        self._stock_name_cache.popitem(last=False)
                     return name
                 
         except Exception as e:

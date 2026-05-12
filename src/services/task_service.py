@@ -45,6 +45,7 @@ class TaskService:
         self._max_workers = max_workers
         self._tasks: Dict[str, Dict[str, Any]] = {}
         self._tasks_lock = threading.Lock()
+        self._max_tasks_cache = 200
 
     @classmethod
     def get_instance(cls) -> 'TaskService':
@@ -64,6 +65,23 @@ class TaskService:
                 thread_name_prefix="analysis_"
             )
         return self._executor
+
+    def _prune_tasks(self) -> None:
+        """淘汰旧任务，保留最近 _max_tasks_cache 个"""
+        with self._tasks_lock:
+            if len(self._tasks) <= self._max_tasks_cache:
+                return
+            removable_items = sorted(
+                (
+                    (task_id, task)
+                    for task_id, task in self._tasks.items()
+                    if task.get("status") in ("completed", "failed")
+                ),
+                key=lambda x: x[1].get("start_time", ""),
+            )
+            remove_count = len(self._tasks) - self._max_tasks_cache
+            for task_id, _ in removable_items[:remove_count]:
+                self._tasks.pop(task_id, None)
 
     def submit_analysis(
         self,
@@ -165,76 +183,79 @@ class TaskService:
             }
 
         try:
-            # 延迟导入避免循环依赖
-            from src.config import get_config
-            from main import StockAnalysisPipeline
+            try:
+                # 延迟导入避免循环依赖
+                from src.config import get_config
+                from main import StockAnalysisPipeline
 
-            logger.info(f"[TaskService] 开始分析股票: {code}")
+                logger.info(f"[TaskService] 开始分析股票: {code}")
 
-            # 创建分析管道
-            config = get_config()
-            pipeline = StockAnalysisPipeline(
-                config=config,
-                max_workers=1,
-                source_message=source_message,
-                query_id=task_id,
-                query_source=query_source,
-                save_context_snapshot=save_context_snapshot
-            )
+                # 创建分析管道
+                config = get_config()
+                pipeline = StockAnalysisPipeline(
+                    config=config,
+                    max_workers=1,
+                    source_message=source_message,
+                    query_id=task_id,
+                    query_source=query_source,
+                    save_context_snapshot=save_context_snapshot
+                )
 
-            # 执行单只股票分析（启用单股推送）
-            result = pipeline.process_single_stock(
-                code=code,
-                skip_analysis=False,
-                single_stock_notify=True,
-                report_type=report_type
-            )
+                # 执行单只股票分析（启用单股推送）
+                result = pipeline.process_single_stock(
+                    code=code,
+                    skip_analysis=False,
+                    single_stock_notify=True,
+                    report_type=report_type
+                )
 
-            if result and result.success:
-                result_data = {
-                    "code": result.code,
-                    "name": result.name,
-                    "sentiment_score": result.sentiment_score,
-                    "operation_advice": result.operation_advice,
-                    "trend_prediction": result.trend_prediction,
-                    "analysis_summary": result.analysis_summary,
-                }
+                if result and result.success:
+                    result_data = {
+                        "code": result.code,
+                        "name": result.name,
+                        "sentiment_score": result.sentiment_score,
+                        "operation_advice": result.operation_advice,
+                        "trend_prediction": result.trend_prediction,
+                        "analysis_summary": result.analysis_summary,
+                    }
 
-                with self._tasks_lock:
-                    self._tasks[task_id].update({
-                        "status": "completed",
-                        "end_time": datetime.now().isoformat(),
-                        "result": result_data
-                    })
+                    with self._tasks_lock:
+                        self._tasks[task_id].update({
+                            "status": "completed",
+                            "end_time": datetime.now().isoformat(),
+                            "result": result_data
+                        })
 
-                logger.info(f"[TaskService] 股票 {code} 分析完成: {result.operation_advice}")
-                return {"success": True, "task_id": task_id, "result": result_data}
-            else:
-                fail_message = "分析返回空结果"
-                if result is not None:
-                    fail_message = result.error_message or fail_message
+                    logger.info(f"[TaskService] 股票 {code} 分析完成: {result.operation_advice}")
+                    return {"success": True, "task_id": task_id, "result": result_data}
+                else:
+                    fail_message = "分析返回空结果"
+                    if result is not None:
+                        fail_message = result.error_message or fail_message
+                    with self._tasks_lock:
+                        self._tasks[task_id].update({
+                            "status": "failed",
+                            "end_time": datetime.now().isoformat(),
+                            "error": fail_message
+                        })
+
+                    logger.warning(f"[TaskService] 股票 {code} 分析失败: {fail_message}")
+                    return {"success": False, "task_id": task_id, "error": fail_message}
+
+            except Exception as e:
+                error_msg = str(e)
+                logger.error(f"[TaskService] 股票 {code} 分析异常: {error_msg}")
+
                 with self._tasks_lock:
                     self._tasks[task_id].update({
                         "status": "failed",
                         "end_time": datetime.now().isoformat(),
-                        "error": fail_message
+                        "error": error_msg
                     })
 
-                logger.warning(f"[TaskService] 股票 {code} 分析失败: {fail_message}")
-                return {"success": False, "task_id": task_id, "error": fail_message}
-
-        except Exception as e:
-            error_msg = str(e)
-            logger.error(f"[TaskService] 股票 {code} 分析异常: {error_msg}")
-
-            with self._tasks_lock:
-                self._tasks[task_id].update({
-                    "status": "failed",
-                    "end_time": datetime.now().isoformat(),
-                    "error": error_msg
-                })
-
-            return {"success": False, "task_id": task_id, "error": error_msg}
+                return {"success": False, "task_id": task_id, "error": error_msg}
+        finally:
+            self._prune_tasks()
 
 
 # ============================================================

@@ -18,6 +18,7 @@ import json as _json
 import logging
 import re
 import time
+from collections import OrderedDict
 from datetime import datetime, timedelta
 from typing import Optional, Tuple, List, Dict, Any
 
@@ -576,15 +577,14 @@ class TushareFetcher(BaseFetcher):
         # 检查缓存
         if hasattr(self, '_stock_name_cache') and stock_code in self._stock_name_cache:
             return self._stock_name_cache[stock_code]
-        
+
         # 初始化缓存
         if not hasattr(self, '_stock_name_cache'):
-            self._stock_name_cache = {}
-        
+            self._stock_name_cache = OrderedDict()
+
         try:
             # 速率限制检查
             self._check_rate_limit()
-            
 
             # 根据市场/类型选择基础信息接口
             if _is_hk_market(stock_code):
@@ -608,10 +608,12 @@ class TushareFetcher(BaseFetcher):
                     ts_code=ts_code,
                     fields='ts_code,name'
                 )
-            
+
             if df is not None and not df.empty:
                 name = df.iloc[0]['name']
                 self._stock_name_cache[stock_code] = name
+                while len(self._stock_name_cache) > 2000:
+                    self._stock_name_cache.popitem(last=False)
                 logger.debug(f"Tushare 获取股票名称成功: {stock_code} -> {name}")
                 return name
             
@@ -649,9 +651,11 @@ class TushareFetcher(BaseFetcher):
             df['code'] = df['ts_code'].astype(str).str.split('.').str[0]
 
             if not hasattr(self, '_stock_name_cache'):
-                self._stock_name_cache = {}
+                self._stock_name_cache = OrderedDict()
             for _, row in df.iterrows():
                 self._stock_name_cache[row['code']] = row['name']
+            while len(self._stock_name_cache) > 2000:
+                self._stock_name_cache.popitem(last=False)
 
             logger.info(f"Tushare 获取股票列表成功: {len(df)} 条")
             return df[['code', 'name', 'industry', 'area', 'market']]

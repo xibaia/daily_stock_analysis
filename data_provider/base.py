@@ -17,6 +17,7 @@
 import logging
 import random
 import time
+from collections import OrderedDict
 from threading import BoundedSemaphore, RLock, Thread
 from abc import ABC, abstractmethod
 from datetime import datetime
@@ -505,8 +506,9 @@ class DataFetcherManager:
         self._fetchers_by_name: Dict[str, BaseFetcher] = {}
         self._fetcher_call_locks: Dict[int, RLock] = {}
         self._fetcher_call_locks_lock = RLock()
-        self._stock_name_cache: Dict[str, str] = {}
+        self._stock_name_cache: Dict[str, str] = OrderedDict()
         self._stock_name_cache_lock = RLock()
+        self._max_stock_name_cache_size = 5000
         
         if fetchers:
             # 按优先级排序
@@ -519,8 +521,9 @@ class DataFetcherManager:
         self._tickflow_fetcher = None
         self._tickflow_api_key: Optional[str] = None
         self._tickflow_lock = RLock()
-        self._fundamental_cache: Dict[str, Dict[str, Any]] = {}
+        self._fundamental_cache: Dict[str, Dict[str, Any]] = OrderedDict()
         self._fundamental_cache_lock = RLock()
+        self._max_fundamental_cache_size = 500
         self._fundamental_timeout_worker_limit = 8
         self._fundamental_timeout_slots = BoundedSemaphore(self._fundamental_timeout_worker_limit)
 
@@ -535,7 +538,7 @@ class DataFetcherManager:
         if not hasattr(self, "_fetcher_call_locks_lock") or self._fetcher_call_locks_lock is None:
             self._fetcher_call_locks_lock = RLock()
         if not hasattr(self, "_stock_name_cache") or self._stock_name_cache is None:
-            self._stock_name_cache = {}
+            self._stock_name_cache = OrderedDict()
         if not hasattr(self, "_stock_name_cache_lock") or self._stock_name_cache_lock is None:
             self._stock_name_cache_lock = RLock()
 
@@ -668,6 +671,8 @@ class DataFetcherManager:
         self._ensure_concurrency_guards()
         with self._stock_name_cache_lock:
             self._stock_name_cache[stock_code] = name
+            while len(self._stock_name_cache) > self._max_stock_name_cache_size:
+                self._stock_name_cache.popitem(last=False)
         return name
 
     def _get_tickflow_fetcher(self):
@@ -1725,7 +1730,9 @@ class DataFetcherManager:
                     if cache_updates:
                         with self._stock_name_cache_lock:
                             self._stock_name_cache.update(cache_updates)
-                    
+                            while len(self._stock_name_cache) > self._max_stock_name_cache_size:
+                                self._stock_name_cache.popitem(last=False)
+
                     if not missing_codes:
                         break
                     

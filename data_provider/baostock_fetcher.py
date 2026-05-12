@@ -16,6 +16,7 @@ BaostockFetcher - 备用数据源 2 (Priority 3)
 
 import logging
 import re
+from collections import OrderedDict
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Optional, Generator
@@ -289,20 +290,20 @@ class BaostockFetcher(BaseFetcher):
         
         # 初始化缓存
         if not hasattr(self, '_stock_name_cache'):
-            self._stock_name_cache = {}
-        
+            self._stock_name_cache = OrderedDict()
+
         try:
             bs_code = self._convert_stock_code(stock_code)
-            
+
             with self._baostock_session() as bs:
                 # 查询股票基本信息
                 rs = bs.query_stock_basic(code=bs_code)
-                
+
                 if rs.error_code == '0':
                     data_list = []
                     while rs.next():
                         data_list.append(rs.get_row_data())
-                    
+
                     if data_list:
                         # Baostock 返回的字段：code, code_name, ipoDate, outDate, type, status
                         fields = rs.fields
@@ -310,6 +311,8 @@ class BaostockFetcher(BaseFetcher):
                         if name_idx is not None and len(data_list[0]) > name_idx:
                             name = data_list[0][name_idx]
                             self._stock_name_cache[stock_code] = name
+                            while len(self._stock_name_cache) > 2000:
+                                self._stock_name_cache.popitem(last=False)
                             logger.debug(f"Baostock 获取股票名称成功: {stock_code} -> {name}")
                             return name
                 
@@ -346,10 +349,12 @@ class BaostockFetcher(BaseFetcher):
                         
                         # 更新缓存
                         if not hasattr(self, '_stock_name_cache'):
-                            self._stock_name_cache = {}
+                            self._stock_name_cache = OrderedDict()
                         for _, row in df.iterrows():
                             self._stock_name_cache[row['code']] = row['name']
-                        
+                        while len(self._stock_name_cache) > 2000:
+                            self._stock_name_cache.popitem(last=False)
+
                         logger.info(f"Baostock 获取股票列表成功: {len(df)} 条")
                         return df[['code', 'name']]
                 
