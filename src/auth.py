@@ -36,6 +36,8 @@ _auth_enabled: Optional[bool] = None
 _session_secret: Optional[bytes] = None
 _password_hash_salt: Optional[bytes] = None
 _password_hash_stored: Optional[bytes] = None
+_user_password_hash_salt: Optional[bytes] = None
+_user_password_hash_stored: Optional[bytes] = None
 _rate_limit: dict[str, Tuple[int, float]] = {}
 _rate_limit_lock = None
 
@@ -62,8 +64,13 @@ def _get_data_dir() -> Path:
 
 
 def _get_credential_path() -> Path:
-    """Path to stored password hash file."""
+    """Path to stored admin password hash file."""
     return _get_data_dir() / ".admin_password_hash"
+
+
+def _get_user_credential_path() -> Path:
+    """Path to stored user (guest) password hash file."""
+    return _get_data_dir() / ".user_password_hash"
 
 
 def _is_auth_enabled_from_env() -> bool:
@@ -164,7 +171,7 @@ def _verify_password_hash(submitted: str, salt: bytes, stored_hash: bytes) -> bo
 
 
 def _load_credential_from_file() -> bool:
-    """Load credential from file into module globals. Returns True if loaded."""
+    """Load admin credential from file into module globals. Returns True if loaded."""
     global _password_hash_salt, _password_hash_stored
 
     path = _get_credential_path()
@@ -186,12 +193,36 @@ def _load_credential_from_file() -> bool:
         return False
 
 
+def _load_user_credential_from_file() -> bool:
+    """Load user (guest) credential from file into module globals. Returns True if loaded."""
+    global _user_password_hash_salt, _user_password_hash_stored
+
+    path = _get_user_credential_path()
+    if not path.exists():
+        _user_password_hash_salt = None
+        _user_password_hash_stored = None
+        return False
+
+    try:
+        raw = path.read_text().strip()
+        parsed = _parse_password_hash(raw)
+        if parsed is None:
+            logger.warning("Invalid .user_password_hash format, ignoring")
+            return False
+        _user_password_hash_salt, _user_password_hash_stored = parsed
+        return True
+    except OSError as e:
+        logger.error("Failed to read user credential file: %s", e)
+        return False
+
+
 def refresh_auth_state() -> None:
     """Reload auth-related state from disk and env."""
     global _auth_enabled, _session_secret
     _auth_enabled = None
     _session_secret = None
     _load_credential_from_file()
+    _load_user_credential_from_file()
 
 
 def is_auth_enabled() -> bool:
@@ -225,6 +256,18 @@ def is_password_set() -> bool:
 def is_password_changeable() -> bool:
     """Return whether password can be changed via web/CLI (always True when auth enabled)."""
     return is_auth_enabled()
+
+
+def has_user_password() -> bool:
+    """Return whether a valid user (guest) password hash exists on disk."""
+    return _load_user_credential_from_file()
+
+
+def verify_stored_user_password(password: str) -> bool:
+    """Verify password against stored user credential even when auth is disabled."""
+    if not has_user_password():
+        return False
+    return _verify_password_hash(password, _user_password_hash_salt, _user_password_hash_stored)
 
 
 def _get_session_secret() -> Optional[bytes]:
@@ -279,16 +322,23 @@ def set_initial_password(password: str) -> Optional[str]:
         return "密码保存失败"
 
 
-def verify_password(password: str) -> bool:
-    """Verify password against stored credential. Constant-time where applicable."""
+def verify_password(password: str) -> Tuple[bool, Optional[str]]:
+    """Verify password against stored credentials. Returns (success, role).
+
+    Role is 'admin' or 'user'. When auth is disabled, returns (True, 'admin').
+    """
     if not is_auth_enabled():
-        return True
-    return verify_stored_password(password)
+        return (True, "admin")
+    if verify_stored_password(password):
+        return (True, "admin")
+    if verify_stored_user_password(password):
+        return (True, "user")
+    return (False, None)
 
 
 def change_password(current: str, new: str) -> Optional[str]:
     """
-    Change password. Verifies current, writes new hash. Returns error message or None on success.
+    Change admin password. Verifies current, writes new hash. Returns error message or None on success.
     """
     if not is_auth_enabled():
         return "认证功能未启用"
@@ -329,42 +379,123 @@ def change_password(current: str, new: str) -> Optional[str]:
         return "密码保存失败"
 
 
-def create_session() -> str:
-    """Create a signed session payload. Format: nonce.ts.signature."""
+def set_user_password(password: str) -> Optional[str]:
+    """
+    Set user (guest) password. Returns error message or None on success.
+    Atomic write with 0o600 permissions.
+    """
+    err = _validate_password(password)
+    if err:
+        return err
+
+    data_dir = _get_data_dir()
+    data_dir.mkdir(parents=True, exist_ok=True)
+    cred_path = _get_user_credential_path()
+
+    salt = secrets.token_bytes(32)
+    derived = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt=salt,
+        iterations=PBKDF2_ITERATIONS,
+    )
+    salt_b64 = base64.standard_b64encode(salt).decode("ascii")
+    hash_b64 = base64.standard_b64encode(derived).decode("ascii")
+    content = f"{salt_b64}:{hash_b64}"
+
+    try:
+        tmp_path = cred_path.with_suffix(".tmp")
+        tmp_path.write_text(content)
+        tmp_path.chmod(0o600)
+        tmp_path.replace(cred_path)
+        _load_user_credential_from_file()
+        return None
+    except OSError as e:
+        logger.error("Failed to write user credential file: %s", e)
+        return "密码保存失败"
+
+
+def change_user_password(current: str, new: str) -> Optional[str]:
+    """
+    Change user (guest) password. Verifies current, writes new hash. Returns error message or None on success.
+    """
+    if not is_auth_enabled():
+        return "认证功能未启用"
+    if not has_user_password():
+        return "尚未设置访客密码"
+
+    if not current or not current.strip():
+        return "请输入当前密码"
+    if not _verify_password_hash(current, _user_password_hash_salt, _user_password_hash_stored):
+        return "当前密码错误"
+
+    err = _validate_password(new)
+    if err:
+        return err
+
+    cred_path = _get_user_credential_path()
+    salt = secrets.token_bytes(32)
+    derived = hashlib.pbkdf2_hmac(
+        "sha256",
+        new.encode("utf-8"),
+        salt=salt,
+        iterations=PBKDF2_ITERATIONS,
+    )
+    salt_b64 = base64.standard_b64encode(salt).decode("ascii")
+    hash_b64 = base64.standard_b64encode(derived).decode("ascii")
+    content = f"{salt_b64}:{hash_b64}"
+
+    try:
+        tmp_path = cred_path.with_suffix(".tmp")
+        tmp_path.write_text(content)
+        tmp_path.chmod(0o600)
+        tmp_path.replace(cred_path)
+        _load_user_credential_from_file()
+        return None
+    except OSError as e:
+        logger.error("Failed to write user credential file: %s", e)
+        return "密码保存失败"
+
+
+def create_session(role: str = "admin") -> str:
+    """Create a signed session payload. Format: nonce.ts.role.signature."""
     secret = _get_session_secret()
     if not secret:
         return ""
     nonce = secrets.token_urlsafe(32)
     ts = str(int(time.time()))
-    payload = f"{nonce}.{ts}"
+    payload = f"{nonce}.{ts}.{role}"
     sig = hmac.new(secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()
     return f"{payload}.{sig}"
 
 
-def verify_session(value: str) -> bool:
-    """Verify session cookie and check expiry."""
+def verify_session(value: str) -> Tuple[bool, Optional[str]]:
+    """Verify session cookie and check expiry. Returns (valid, role).
+
+    Old 3-part sessions (nonce.ts.signature) are rejected and return (False, None).
+    """
     secret = _get_session_secret()
     if not secret or not value:
-        return False
+        return (False, None)
     parts = value.split(".")
-    if len(parts) != 3:
-        return False
-    nonce, ts_str, sig = parts[0], parts[1], parts[2]
-    payload = f"{nonce}.{ts_str}"
+    if len(parts) != 4:
+        return (False, None)
+    nonce, ts_str, role, sig = parts[0], parts[1], parts[2], parts[3]
+    payload = f"{nonce}.{ts_str}.{role}"
     expected = hmac.new(secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(sig, expected):
-        return False
+        return (False, None)
     try:
         ts = int(ts_str)
     except ValueError:
-        return False
+        return (False, None)
     try:
         max_age_hours = int(os.getenv("ADMIN_SESSION_MAX_AGE_HOURS", str(SESSION_MAX_AGE_HOURS_DEFAULT)))
     except ValueError:
         max_age_hours = SESSION_MAX_AGE_HOURS_DEFAULT
     if time.time() - ts > max_age_hours * 3600:
-        return False
-    return True
+        return (False, None)
+    return (True, role)
 
 
 def get_client_ip(request) -> str:
@@ -488,11 +619,42 @@ def reset_password_cli() -> int:
     return 0
 
 
+def set_user_password_cli() -> int:
+    """Interactive CLI to set user (guest) password. Returns exit code."""
+    _ensure_env_loaded()
+    if not _is_auth_enabled_from_env():
+        print("Error: Auth is not enabled. Set ADMIN_AUTH_ENABLED=true in .env", file=sys.stderr)
+        return 1
+
+    print("Enter new user (guest) password (will not echo):", end=" ")
+    pwd = getpass.getpass("")
+    err = _validate_password(pwd)
+    if err:
+        print(f"Error: {err}", file=sys.stderr)
+        return 1
+
+    print("Confirm new password:", end=" ")
+    pwd2 = getpass.getpass("")
+    if pwd != pwd2:
+        print("Error: Passwords do not match", file=sys.stderr)
+        return 1
+
+    err = set_user_password(pwd)
+    if err:
+        print(f"Error: {err}", file=sys.stderr)
+        return 1
+
+    print("User password has been set successfully.")
+    return 0
+
+
 def _main() -> int:
-    """CLI entry: reset_password subcommand."""
+    """CLI entry: reset_password / set_user_password subcommands."""
     if len(sys.argv) > 1 and sys.argv[1] == "reset_password":
         return reset_password_cli()
-    print("Usage: python -m src.auth reset_password", file=sys.stderr)
+    if len(sys.argv) > 1 and sys.argv[1] == "set_user_password":
+        return set_user_password_cli()
+    print("Usage: python -m src.auth reset_password | set_user_password", file=sys.stderr)
     return 1
 
 

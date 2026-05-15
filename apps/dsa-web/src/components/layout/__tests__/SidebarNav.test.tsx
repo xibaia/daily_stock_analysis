@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SidebarNav } from '../SidebarNav';
 
 const mockLogout = vi.fn().mockResolvedValue(undefined);
@@ -9,10 +9,15 @@ const mockThemeToggle = vi.fn(({ collapsed }: { collapsed?: boolean }) => (
 ));
 
 const completionBadgeState = { value: true };
+const authState: { authEnabled: boolean; role: 'admin' | 'user' | null } = {
+  authEnabled: true,
+  role: 'admin',
+};
 
 vi.mock('../../../contexts/AuthContext', () => ({
   useAuth: () => ({
-    authEnabled: true,
+    authEnabled: authState.authEnabled,
+    role: authState.role,
     logout: mockLogout,
   }),
 }));
@@ -27,6 +32,14 @@ vi.mock('../../theme/ThemeToggle', () => ({
 }));
 
 describe('SidebarNav', () => {
+  beforeEach(() => {
+    authState.authEnabled = true;
+    authState.role = 'admin';
+    completionBadgeState.value = true;
+    mockLogout.mockClear();
+    mockThemeToggle.mockClear();
+  });
+
   it('shows the shared completion badge only when chat completion is pending', () => {
     completionBadgeState.value = true;
 
@@ -60,6 +73,32 @@ describe('SidebarNav', () => {
       expect.objectContaining({ variant: 'nav', collapsed: true }),
     );
     expect(screen.getByRole('button', { name: '切换主题(折叠)' })).toBeInTheDocument();
+  });
+
+  it('shows settings when auth is disabled', () => {
+    authState.authEnabled = false;
+    authState.role = null;
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <SidebarNav />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('link', { name: '设置' })).toBeInTheDocument();
+  });
+
+  it('hides settings for user role when auth is enabled', () => {
+    authState.authEnabled = true;
+    authState.role = 'user';
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <SidebarNav />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole('link', { name: '设置' })).not.toBeInTheDocument();
   });
 
   it('opens the logout confirmation and confirms logout', async () => {

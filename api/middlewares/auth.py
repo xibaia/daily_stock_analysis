@@ -52,7 +52,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         cookie_val = request.cookies.get(COOKIE_NAME)
-        if not cookie_val or not verify_session(cookie_val):
+        if not cookie_val:
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "error": "unauthorized",
+                    "message": "Login required",
+                },
+            )
+
+        valid, _ = verify_session(cookie_val)
+        if not valid:
             return JSONResponse(
                 status_code=401,
                 content={

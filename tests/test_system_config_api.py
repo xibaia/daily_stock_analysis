@@ -40,6 +40,8 @@ class SystemConfigApiTestCase(unittest.TestCase):
         auth._session_secret = None
         auth._password_hash_salt = None
         auth._password_hash_stored = None
+        auth._user_password_hash_salt = None
+        auth._user_password_hash_stored = None
         auth._rate_limit = {}
 
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -65,7 +67,7 @@ class SystemConfigApiTestCase(unittest.TestCase):
 
         self.manager = ConfigManager(env_path=self.env_path)
         self.service = SystemConfigService(manager=self.manager)
-        self._verify_session_patch = patch.object(system_config, "verify_session", return_value=True)
+        self._verify_session_patch = patch.object(system_config, "verify_session", return_value=(True, "admin"))
         self._verify_session_patch.start()
 
     def tearDown(self) -> None:
@@ -140,7 +142,7 @@ class SystemConfigApiTestCase(unittest.TestCase):
             encoding="utf-8",
         )
 
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {"DATABASE_PATH": str(Path(self.temp_dir.name) / "setup_status.db")}, clear=True):
             payload = system_config.get_setup_status(service=self.service).model_dump()
 
         self.assertTrue(payload["is_complete"])
@@ -409,7 +411,7 @@ class SystemConfigApiTestCase(unittest.TestCase):
     def test_config_env_endpoints_require_valid_admin_session(self) -> None:
         with (
             patch.dict(os.environ, {"DSA_DESKTOP_MODE": "false"}, clear=False),
-            patch.object(system_config, "verify_session", return_value=False),
+            patch.object(system_config, "verify_session", return_value=(False, None)),
         ):
             current = system_config.get_system_config(include_schema=False, service=self.service).model_dump()
             invalid_request = self._build_request({system_config.COOKIE_NAME: "invalid-session"})
@@ -491,6 +493,28 @@ class SystemConfigApiTestCase(unittest.TestCase):
 
         self.assertEqual(import_ctx.exception.status_code, 500)
         self.assertEqual(import_ctx.exception.detail["error"], "internal_error")
+
+    def test_config_env_endpoint_rejects_invalid_session_cookie(self) -> None:
+        with patch.object(system_config, "verify_session", return_value=(False, None)):
+            with self.assertRaises(HTTPException) as export_ctx:
+                system_config.export_system_config(
+                    request=self._build_request(cookies={system_config.COOKIE_NAME: "invalid-session"}),
+                    service=self.service,
+                )
+
+        self.assertEqual(export_ctx.exception.status_code, 401)
+        self.assertEqual(export_ctx.exception.detail["error"], "env_backup_access_denied")
+
+    def test_config_env_endpoint_rejects_user_session(self) -> None:
+        with patch.object(system_config, "verify_session", return_value=(True, "user")):
+            with self.assertRaises(HTTPException) as export_ctx:
+                system_config.export_system_config(
+                    request=self._build_request(cookies={system_config.COOKIE_NAME: "user-session"}),
+                    service=self.service,
+                )
+
+        self.assertEqual(export_ctx.exception.status_code, 403)
+        self.assertEqual(export_ctx.exception.detail["error"], "env_backup_access_denied")
 
     def test_config_env_endpoints_reject_without_session_after_auth_toggle(self) -> None:
         self.env_path.write_text(

@@ -67,8 +67,16 @@ def _allow_env_backup_access(request: Request) -> None:
         )
 
     cookie_val = request.cookies.get(COOKIE_NAME)
-    if cookie_val and verify_session(cookie_val):
-        return
+    if cookie_val:
+        valid, role = verify_session(cookie_val)
+        if valid and role == "admin":
+            return
+
+        if valid:
+            raise EnvBackupAccessDenied(
+                status_code=403,
+                message="System config backup requires an admin session",
+            )
 
     raise EnvBackupAccessDenied(
         status_code=401,

@@ -15,11 +15,13 @@ from src.auth import (
     COOKIE_NAME,
     SESSION_MAX_AGE_HOURS_DEFAULT,
     change_password,
+    change_user_password,
     check_rate_limit,
     clear_rate_limit,
     create_session,
     get_client_ip,
     has_stored_password,
+    has_user_password,
     is_auth_enabled,
     is_password_changeable,
     is_password_set,
@@ -27,6 +29,7 @@ from src.auth import (
     refresh_auth_state,
     rotate_session_secret,
     set_initial_password,
+    set_user_password,
     verify_password,
     verify_stored_password,
     verify_session,
@@ -56,6 +59,7 @@ class ChangePasswordRequest(BaseModel):
     current_password: str = Field(default="", alias="currentPassword")
     new_password: str = Field(default="", alias="newPassword")
     new_password_confirm: str = Field(default="", alias="newPasswordConfirm")
+    role: str | None = Field(default="admin", alias="role")
 
 
 class AuthSettingsRequest(BaseModel):
@@ -158,9 +162,13 @@ def _get_auth_status_dict(request: Request | None = None) -> dict:
     """Helper to build consistent auth status response body."""
     auth_enabled = is_auth_enabled()
     logged_in = False
+    role = None
     if auth_enabled and request:
         cookie_val = request.cookies.get(COOKIE_NAME)
-        logged_in = verify_session(cookie_val) if cookie_val else False
+        if cookie_val:
+            valid, session_role = verify_session(cookie_val)
+            logged_in = valid
+            role = session_role
 
     # setupState determination:
     # - enabled: auth is active
@@ -173,13 +181,16 @@ def _get_auth_status_dict(request: Request | None = None) -> dict:
     else:
         setup_state = "no_password"
 
-    return {
+    result = {
         "authEnabled": auth_enabled,
         "loggedIn": logged_in,
         "passwordSet": _password_set_for_response(auth_enabled),
         "passwordChangeable": is_password_changeable() if auth_enabled else False,
         "setupState": setup_state,
     }
+    if role:
+        result["role"] = role
+    return result
 
 
 @router.get(
@@ -202,7 +213,17 @@ async def auth_status(request: Request):
     ),
 )
 async def auth_update_settings(request: Request, body: AuthSettingsRequest):
-    """Manage auth enablement from the settings page."""
+    """Manage auth enablement from the settings page. Only admin can call."""
+    # Role check: only admin can change auth settings
+    cookie_val = request.cookies.get(COOKIE_NAME)
+    if cookie_val:
+        valid, role = verify_session(cookie_val)
+        if valid and role != "admin":
+            return JSONResponse(
+                status_code=403,
+                content={"error": "forbidden", "message": "只有管理员可以修改认证设置"},
+            )
+
     target_enabled = body.auth_enabled
     current_enabled = is_auth_enabled()
     stored_password_exists = has_stored_password()
@@ -257,8 +278,11 @@ async def auth_update_settings(request: Request, body: AuthSettingsRequest):
             # This triggers whenever trying to enable/keep enabled an existing auth setup.
             cookie_val = request.cookies.get(COOKIE_NAME)
             # if target_enabled is True here, they are requesting to enable or keep auth enabled
-            is_valid_session = cookie_val and verify_session(cookie_val)
-            
+            is_valid_session = False
+            if cookie_val:
+                valid, _ = verify_session(cookie_val)
+                is_valid_session = valid
+
             if not is_valid_session:
                 if not current_password:
                     return JSONResponse(
@@ -284,7 +308,10 @@ async def auth_update_settings(request: Request, body: AuthSettingsRequest):
     else:
         if current_enabled:
             cookie_val = request.cookies.get(COOKIE_NAME)
-            is_valid_session = cookie_val and verify_session(cookie_val)
+            is_valid_session = False
+            if cookie_val:
+                valid, _ = verify_session(cookie_val)
+                is_valid_session = valid
 
             if not is_valid_session:
                 if not current_password:
@@ -402,8 +429,10 @@ async def auth_login(request: Request, body: LoginRequest):
                 status_code=400,
                 content={"error": "invalid_password", "message": err},
             )
+        role = "admin"
     else:
-        if not verify_password(password):
+        ok, role = verify_password(password)
+        if not ok or not role:
             record_login_failure(ip)
             return JSONResponse(
                 status_code=401,
@@ -411,14 +440,14 @@ async def auth_login(request: Request, body: LoginRequest):
             )
 
     clear_rate_limit(ip)
-    session_val = create_session()
+    session_val = create_session(role)
     if not session_val:
         return JSONResponse(
             status_code=500,
             content={"error": "internal_error", "message": "Failed to create session"},
         )
 
-    resp = JSONResponse(content={"ok": True})
+    resp = JSONResponse(content={"ok": True, "role": role})
     _set_session_cookie(resp, session_val, request)
     return resp
 
@@ -428,12 +457,34 @@ async def auth_login(request: Request, body: LoginRequest):
     summary="Change password",
     description="Change password. Requires valid session.",
 )
-async def auth_change_password(body: ChangePasswordRequest):
-    """Change password. Requires login."""
+async def auth_change_password(request: Request, body: ChangePasswordRequest):
+    """Change password. Requires login. Admin can change both passwords; user can only change user password."""
     if not is_password_changeable():
         return JSONResponse(
             status_code=400,
             content={"error": "not_changeable", "message": "Password cannot be changed via web"},
+        )
+
+    # Check session role
+    cookie_val = request.cookies.get(COOKIE_NAME)
+    session_role = None
+    if cookie_val:
+        valid, session_role = verify_session(cookie_val)
+        if not valid:
+            session_role = None
+
+    target_role = (body.role or "admin").strip().lower()
+    if target_role not in ("admin", "user"):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "invalid_role", "message": "无效的角色"},
+        )
+
+    # User role can only change user password
+    if session_role == "user" and target_role == "admin":
+        return JSONResponse(
+            status_code=403,
+            content={"error": "forbidden", "message": "访客只能修改访客密码"},
         )
 
     current = (body.current_password or "").strip()
@@ -451,7 +502,10 @@ async def auth_change_password(body: ChangePasswordRequest):
             content={"error": "password_mismatch", "message": "两次输入的新密码不一致"},
         )
 
-    err = change_password(current, new_pwd)
+    if target_role == "user":
+        err = change_user_password(current, new_pwd)
+    else:
+        err = change_password(current, new_pwd)
     if err:
         return JSONResponse(
             status_code=400,

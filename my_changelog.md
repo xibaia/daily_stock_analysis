@@ -36,3 +36,26 @@
 
 - 如需恢复公网直连应用端口，可将 `docker/docker-compose.yml` 的端口映射改回 `${API_PORT:-8000}:${API_PORT:-8000}`。
 - 回滚直连前仍建议保留 `ADMIN_AUTH_ENABLED=true`，并在云安全组限制访问来源。
+
+---
+
+## docs 本次改动记录（2026-05-15）
+
+### docs/CHANGELOG.md
+
+- `[Unreleased]` 段新增两条：
+  - `[修复]` 修正双角色 Web 认证中 session 校验返回值兼容问题，避免无效 Cookie 被受保护 API 或配置备份接口误判为有效；配置备份接口现在要求管理员会话。
+  - `[文档]` 补充 Web 认证双角色与访客密码 CLI 说明，注明角色化 session 会使旧登录 Cookie 失效。
+
+### docs/full-guide.md
+
+- `ADMIN_AUTH_ENABLED` 环境变量说明扩展：
+  - 补充「管理员密码」与「访客密码」的区分描述。
+  - 新增 `python -m src.auth set_user_password` CLI 说明。
+  - 注明角色化 session 会使旧版本登录 Cookie 失效，重新登录即可。
+  - 明确 Web 的 `.env` 备份导入导出需要管理员会话。
+
+### docs/full-guide_EN.md
+
+- 新增 `ADMIN_AUTH_ENABLED` 环境变量完整英文说明（该变量此前缺失英文文档）。
+  - 涵盖管理员密码设置、重置方式、访客密码设置、角色化 session 使旧 Cookie 失效、`.env` 备份权限限制。

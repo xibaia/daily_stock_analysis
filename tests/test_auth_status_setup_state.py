@@ -21,6 +21,8 @@ def _reset_auth_globals() -> None:
     auth._session_secret = None
     auth._password_hash_salt = None
     auth._password_hash_stored = None
+    auth._user_password_hash_salt = None
+    auth._user_password_hash_stored = None
     auth._rate_limit = {}
 
 

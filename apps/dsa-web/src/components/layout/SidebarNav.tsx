@@ -32,9 +32,16 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export const SidebarNav: React.FC<SidebarNavProps> = ({ collapsed = false, onNavigate }) => {
-  const { authEnabled, logout } = useAuth();
+  const { authEnabled, logout, role } = useAuth();
   const completionBadge = useAgentChatStore((state) => state.completionBadge);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  const visibleNavItems = NAV_ITEMS.filter((item) => {
+    if (item.key === 'settings') {
+      return !authEnabled || role === 'admin';
+    }
+    return true;
+  });
 
   return (
     <div className="flex h-full flex-col">
@@ -48,7 +55,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({ collapsed = false, onNav
       </div>
 
       <nav className="flex flex-1 flex-col gap-1.5" aria-label="主导航">
-        {NAV_ITEMS.map(({ key, label, to, icon: Icon, exact, badge }) => (
+        {visibleNavItems.map(({ key, label, to, icon: Icon, exact, badge }) => (
           <NavLink
             key={key}
             to={to}

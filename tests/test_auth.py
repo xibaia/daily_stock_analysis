@@ -19,6 +19,8 @@ def _reset_auth_globals() -> None:
     auth._session_secret = None
     auth._password_hash_salt = None
     auth._password_hash_stored = None
+    auth._user_password_hash_salt = None
+    auth._user_password_hash_stored = None
     auth._rate_limit = {}
 
 
@@ -94,19 +96,32 @@ class AuthSessionTestCase(unittest.TestCase):
             tok = auth.create_session()
             self.assertTrue(tok, "session token should be non-empty")
             parts = tok.split(".")
-            self.assertEqual(len(parts), 3, "format: nonce.ts.signature")
-            nonce, ts, sig = parts
+            self.assertEqual(len(parts), 4, "format: nonce.ts.role.signature")
+            nonce, ts, role, sig = parts
             self.assertTrue(nonce)
             self.assertTrue(ts.isdigit())
+            self.assertEqual(role, "admin")
             self.assertTrue(sig)
+
+            tok_user = auth.create_session("user")
+            parts_user = tok_user.split(".")
+            self.assertEqual(len(parts_user), 4)
+            self.assertEqual(parts_user[2], "user")
             return tok
 
         self._patch_env_and_run(test_fn=run)
 
     def test_verify_session_valid_token(self) -> None:
         def run():
-            tok = auth.create_session()
-            self.assertTrue(auth.verify_session(tok))
+            tok = auth.create_session("admin")
+            valid, role = auth.verify_session(tok)
+            self.assertTrue(valid)
+            self.assertEqual(role, "admin")
+
+            tok_user = auth.create_session("user")
+            valid_u, role_u = auth.verify_session(tok_user)
+            self.assertTrue(valid_u)
+            self.assertEqual(role_u, "user")
 
         self._patch_env_and_run(test_fn=run)
 
@@ -116,15 +131,27 @@ class AuthSessionTestCase(unittest.TestCase):
             with patch.object(auth, "time") as mock_time:
                 mock_time.time.return_value = past
                 tok = auth.create_session()
-            self.assertFalse(auth.verify_session(tok), "48h-old token should be expired")
+            valid, role = auth.verify_session(tok)
+            self.assertFalse(valid, "48h-old token should be expired")
+            self.assertIsNone(role)
 
         self._patch_env_and_run(test_fn=run)
 
     def test_verify_session_invalid_format(self) -> None:
         def run():
-            self.assertFalse(auth.verify_session(""))
-            self.assertFalse(auth.verify_session("a.b"))
-            self.assertFalse(auth.verify_session("invalid"))
+            valid, role = auth.verify_session("")
+            self.assertFalse(valid)
+            self.assertIsNone(role)
+            valid, role = auth.verify_session("a.b")
+            self.assertFalse(valid)
+            self.assertIsNone(role)
+            valid, role = auth.verify_session("invalid")
+            self.assertFalse(valid)
+            self.assertIsNone(role)
+            # Old 3-part format should be rejected
+            valid, role = auth.verify_session("nonce.ts.sig")
+            self.assertFalse(valid)
+            self.assertIsNone(role)
 
         self._patch_env_and_run(test_fn=run)
 
@@ -204,7 +231,9 @@ class AuthSetPasswordTestCase(unittest.TestCase):
             self.assertIsNone(err)
             self.assertIsNotNone(auth._password_hash_stored)
             self.assertTrue(auth.is_password_set())
-            self.assertTrue(auth.verify_password("password123"))
+            ok, role = auth.verify_password("password123")
+            self.assertTrue(ok)
+            self.assertEqual(role, "admin")
 
         self._run_with_patch(run)
 
@@ -263,8 +292,11 @@ class AuthSetPasswordTestCase(unittest.TestCase):
             auth.set_initial_password("oldpass123")
             err = auth.change_password("oldpass123", "newpass456")
             self.assertIsNone(err)
-            self.assertFalse(auth.verify_password("oldpass123"))
-            self.assertTrue(auth.verify_password("newpass456"))
+            ok, role = auth.verify_password("oldpass123")
+            self.assertFalse(ok)
+            ok, role = auth.verify_password("newpass456")
+            self.assertTrue(ok)
+            self.assertEqual(role, "admin")
 
         self._run_with_patch(run)
 
@@ -273,7 +305,9 @@ class AuthSetPasswordTestCase(unittest.TestCase):
             auth.set_initial_password("correctpass")
             err = auth.change_password("wrongpass", "newpass456")
             self.assertIsNotNone(err)
-            self.assertTrue(auth.verify_password("correctpass"))
+            ok, role = auth.verify_password("correctpass")
+            self.assertTrue(ok)
+            self.assertEqual(role, "admin")
 
         self._run_with_patch(run)
 
@@ -282,8 +316,91 @@ class AuthSetPasswordTestCase(unittest.TestCase):
             auth.set_initial_password("original")
             err = auth.overwrite_password("resetpass")
             self.assertIsNone(err)
-            self.assertFalse(auth.verify_password("original"))
-            self.assertTrue(auth.verify_password("resetpass"))
+            ok, role = auth.verify_password("original")
+            self.assertFalse(ok)
+            ok, role = auth.verify_password("resetpass")
+            self.assertTrue(ok)
+            self.assertEqual(role, "admin")
+
+        self._run_with_patch(run)
+
+
+class AuthUserPasswordTestCase(unittest.TestCase):
+    """Test user (guest) password operations."""
+
+    def setUp(self) -> None:
+        _reset_auth_globals()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.data_dir = Path(self.temp_dir.name)
+        self.addCleanup(self.temp_dir.cleanup)
+
+    def _run_with_patch(self, fn):
+        with patch.object(auth, "_is_auth_enabled_from_env", return_value=True):
+            with patch.object(auth, "_get_data_dir", return_value=self.data_dir):
+                auth._auth_enabled = True
+                return fn()
+
+    def test_set_user_password_success(self) -> None:
+        def run():
+            err = auth.set_user_password("userpass123")
+            self.assertIsNone(err)
+            self.assertTrue(auth.has_user_password())
+            ok, role = auth.verify_password("userpass123")
+            self.assertTrue(ok)
+            self.assertEqual(role, "user")
+
+        self._run_with_patch(run)
+
+    def test_verify_password_admin_first(self) -> None:
+        def run():
+            auth.set_initial_password("adminpass")
+            auth.set_user_password("userpass")
+            ok, role = auth.verify_password("adminpass")
+            self.assertTrue(ok)
+            self.assertEqual(role, "admin")
+            ok, role = auth.verify_password("userpass")
+            self.assertTrue(ok)
+            self.assertEqual(role, "user")
+            ok, role = auth.verify_password("wrongpass")
+            self.assertFalse(ok)
+            self.assertIsNone(role)
+
+        self._run_with_patch(run)
+
+    def test_change_user_password_success(self) -> None:
+        def run():
+            auth.set_user_password("olduserpass")
+            err = auth.change_user_password("olduserpass", "newuserpass")
+            self.assertIsNone(err)
+            ok, role = auth.verify_password("olduserpass")
+            self.assertFalse(ok)
+            ok, role = auth.verify_password("newuserpass")
+            self.assertTrue(ok)
+            self.assertEqual(role, "user")
+
+        self._run_with_patch(run)
+
+    def test_change_user_password_wrong_current(self) -> None:
+        def run():
+            auth.set_user_password("correctuser")
+            err = auth.change_user_password("wronguser", "newpass")
+            self.assertIsNotNone(err)
+            ok, role = auth.verify_password("correctuser")
+            self.assertTrue(ok)
+            self.assertEqual(role, "user")
+
+        self._run_with_patch(run)
+
+    def test_user_password_not_required(self) -> None:
+        """When no user password is set, only admin password works."""
+        def run():
+            auth.set_initial_password("adminpass")
+            self.assertFalse(auth.has_user_password())
+            ok, role = auth.verify_password("adminpass")
+            self.assertTrue(ok)
+            self.assertEqual(role, "admin")
+            ok, role = auth.verify_password("randompass")
+            self.assertFalse(ok)
 
         self._run_with_patch(run)
 

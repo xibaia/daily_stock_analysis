@@ -332,6 +332,7 @@ For the notification baseline, diagnostics, and deployment notes, see [Notificat
 | Variable | Description | Default |
 |--------|------|--------|
 | `STOCK_LIST` | Watchlist codes (comma-separated) | - |
+| `ADMIN_AUTH_ENABLED` | Web login protection. Set to `true` to require a password. The first Web login sets the admin password; reset a forgotten admin password with `python -m src.auth reset_password`. To add a read-only/guest login, run `python -m src.auth set_user_password` on the server. Guest sessions cannot open System Settings or import/export `.env` backups. Role-based sessions invalidate older login cookies; users only need to log in again. Web `.env` backup import/export requires enabled auth and an admin session; desktop mode is not affected. | `false` |
 | `MAX_WORKERS` | Concurrent threads | `3` |
 | `MARKET_REVIEW_ENABLED` | Enable market review | `true` |
 | `MARKET_REVIEW_REGION` | Market review region: cn (A-shares), hk (HK stocks), us (US stocks), both (all three markets) | `cn` |

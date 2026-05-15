@@ -15,7 +15,7 @@ import './App.css';
 
 const AppContent: React.FC = () => {
   const location = useLocation();
-  const { authEnabled, loggedIn, isLoading, loadError, refreshStatus } = useAuth();
+  const { authEnabled, loggedIn, isLoading, loadError, refreshStatus, role } = useAuth();
 
   useEffect(() => {
     useAgentChatStore.getState().setCurrentRoute(location.pathname);
@@ -58,6 +58,8 @@ const AppContent: React.FC = () => {
     return <Navigate to="/" replace />;
   }
 
+  const canAccessSettings = !authEnabled || role === 'admin';
+
   return (
     <Routes>
       <Route element={<Shell />}>
@@ -65,7 +67,10 @@ const AppContent: React.FC = () => {
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/portfolio" element={<PortfolioPage />} />
         <Route path="/backtest" element={<BacktestPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route
+          path="/settings"
+          element={canAccessSettings ? <SettingsPage /> : <Navigate to="/" replace />}
+        />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
       <Route path="/login" element={<LoginPage />} />
