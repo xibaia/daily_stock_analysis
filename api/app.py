@@ -27,6 +27,7 @@ from typing import List, Optional
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -186,6 +187,8 @@ def create_app(static_dir: Optional[Path] = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
+
     add_auth_middleware(app)
     
     # ============================================================
@@ -288,7 +291,9 @@ def create_app(static_dir: Optional[Path] = None) -> FastAPI:
                 )
             if file_path.is_file():
                 relative_path = file_path.relative_to(assets_root).as_posix()
-                return await assets_static_files.get_response(relative_path, request.scope)
+                response = await assets_static_files.get_response(relative_path, request.scope)
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+                return response
             return Response(
                 content="asset not found",
                 status_code=404,
@@ -315,9 +320,13 @@ def create_app(static_dir: Optional[Path] = None) -> FastAPI:
                 # Issue #520: Explicitly resolve MIME type to avoid
                 # browsers rejecting JS modules served as text/plain.
                 content_type, _ = mimetypes.guess_type(str(file_path))
-                return FileResponse(file_path, media_type=content_type)
+                headers = {"Cache-Control": "public, max-age=86400"}
+                return FileResponse(file_path, media_type=content_type, headers=headers)
 
-            return FileResponse(static_dir / "index.html")
+            return FileResponse(
+                static_dir / "index.html",
+                headers={"Cache-Control": "no-cache"},
+            )
     
     return app
 
