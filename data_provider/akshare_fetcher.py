@@ -1773,7 +1773,22 @@ class AkshareFetcher(BaseFetcher):
             ]
             return top_sectors, bottom_sectors
         
-        # 优先东财接口
+        # 优先新浪接口 (更快更稳定)；东财作为 fallback。
+        try:
+            self._set_random_user_agent()
+            self._enforce_rate_limit()
+
+            logger.info("[API调用] ak.stock_sector_spot() 获取行业板块排行(新浪)...")
+            df = ak.stock_sector_spot(indicator='行业')
+            if df is not None and not df.empty:
+                change_col = '涨跌幅'
+                name = '板块'
+                return _get_rank_top_n(df, change_col, name, n)
+
+        except Exception as e:
+            logger.warning(f"[Akshare] 新浪接口获取行业板块排行失败: {e}，尝试东财接口")
+
+        # 新浪失败后，尝试东财接口
         try:
             self._set_random_user_agent()
             self._enforce_rate_limit()
@@ -1784,25 +1799,9 @@ class AkshareFetcher(BaseFetcher):
                 change_col = '涨跌幅'
                 name = '板块名称'
                 return _get_rank_top_n(df, change_col, name, n)
-            
-        except Exception as e:
-            logger.warning(f"[Akshare] 东财接口获取行业板块排行失败: {e}，尝试新浪接口")
 
-        # 东财失败后，尝试新浪接口
-        try:
-            self._set_random_user_agent()
-            self._enforce_rate_limit()
-
-            logger.info("[API调用] ak.stock_sector_spot() 获取行业板块排行(新浪)...")
-            df = ak.stock_sector_spot(indicator='行业')
-            if df is None or df.empty:
-                return None
-            change_col = '涨跌幅'
-            name = '板块'
-            return _get_rank_top_n(df, change_col, name, n)
-        
         except Exception as e:
-            logger.error(f"[Akshare] 新浪接口获取板块排行也失败: {e}")
+            logger.error(f"[Akshare] 东财接口获取行业板块排行也失败: {e}")
             return None
 
     def get_concept_rankings(self, n: int = 5) -> Optional[Tuple[List[Dict], List[Dict]]]:

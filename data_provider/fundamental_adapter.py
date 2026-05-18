@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -267,6 +267,7 @@ class AkshareFundamentalAdapter:
     def _call_df_candidates(
         self,
         candidates: List[Tuple[str, Dict[str, Any]]],
+        validator: Optional[Callable[[pd.DataFrame], bool]] = None,
     ) -> Tuple[Optional[pd.DataFrame], Optional[str], List[str]]:
         errors: List[str] = []
         try:
@@ -283,6 +284,8 @@ class AkshareFundamentalAdapter:
                 if isinstance(df, pd.Series):
                     df = df.to_frame().T
                 if isinstance(df, pd.DataFrame) and not df.empty:
+                    if validator is not None and not validator(df):
+                        continue
                     return df, func_name, errors
             except Exception as exc:
                 errors.append(f"{func_name}:{type(exc).__name__}")
@@ -340,12 +343,27 @@ class AkshareFundamentalAdapter:
                 result["source_chain"].append(f"growth:{fin_source}")
 
         # Earnings forecast
+        # Note: stock_yjyg_em and stock_yjbb_em only accept `date` param,
+        # not `symbol`. Filter by stock_code from full data below.
+        target_code = _normalize_code(stock_code)
+
+        def _has_target_code(df: pd.DataFrame) -> bool:
+            code_cols = [c for c in df.columns if any(k in str(c) for k in ("代码", "股票代码", "证券代码", "ts_code", "symbol"))]
+            if not code_cols:
+                return True
+            for col in code_cols:
+                try:
+                    if target_code in df[col].astype(str).map(_normalize_code).values:
+                        return True
+                except Exception:
+                    continue
+            return False
+
+        # Try stock_yjyg_em first (fast, ~2s); fall back to stock_yjbb_em (slow but comprehensive).
         forecast_df, forecast_source, forecast_errors = self._call_df_candidates([
-            ("stock_yjyg_em", {"symbol": stock_code}),
             ("stock_yjyg_em", {}),
-            ("stock_yjbb_em", {"symbol": stock_code}),
             ("stock_yjbb_em", {}),
-        ])
+        ], validator=_has_target_code)
         result["errors"].extend(forecast_errors)
         if forecast_df is not None:
             row = _extract_latest_row(forecast_df, stock_code)
@@ -356,10 +374,10 @@ class AkshareFundamentalAdapter:
                 result["source_chain"].append(f"earnings_forecast:{forecast_source}")
 
         # Earnings quick report
+        # Note: stock_yjkb_em only accepts `date` param, not `symbol`.
         quick_df, quick_source, quick_errors = self._call_df_candidates([
-            ("stock_yjkb_em", {"symbol": stock_code}),
             ("stock_yjkb_em", {}),
-        ])
+        ], validator=_has_target_code)
         result["errors"].extend(quick_errors)
         if quick_df is not None:
             row = _extract_latest_row(quick_df, stock_code)
@@ -383,10 +401,12 @@ class AkshareFundamentalAdapter:
                 result["source_chain"].append(f"dividend:{dividend_source}")
 
         # Institution / top shareholders
+        # Use validator to ensure the returned full-table DataFrame contains
+        # the target stock; otherwise fall through to the next candidate.
         inst_df, inst_source, inst_errors = self._call_df_candidates([
             ("stock_institute_hold", {}),
             ("stock_institute_recommend", {}),
-        ])
+        ], validator=_has_target_code)
         result["errors"].extend(inst_errors)
         if inst_df is not None:
             row = _extract_latest_row(inst_df, stock_code)
@@ -395,12 +415,15 @@ class AkshareFundamentalAdapter:
                 result["institution"]["institution_holding_change"] = inst_change
                 result["source_chain"].append(f"institution:{inst_source}")
 
+        # stock_gdfx_top_10_em with symbol triggers KeyError in current akshare;
+        # without symbol it returns a *default* stock (not the target) and has
+        # no code column, so _extract_latest_row falls back to row 0 → wrong data.
+        # Use stock_zh_a_gdhs_detail_em instead, which accepts symbol and includes
+        # a code column.
         top10_df, top10_source, top10_errors = self._call_df_candidates([
-            ("stock_gdfx_top_10_em", {"symbol": stock_code}),
-            ("stock_gdfx_top_10_em", {}),
             ("stock_zh_a_gdhs_detail_em", {"symbol": stock_code}),
             ("stock_zh_a_gdhs_detail_em", {}),
-        ])
+        ], validator=_has_target_code)
         result["errors"].extend(top10_errors)
         if top10_df is not None:
             row = _extract_latest_row(top10_df, stock_code)
@@ -427,7 +450,6 @@ class AkshareFundamentalAdapter:
 
         stock_df, stock_source, stock_errors = self._call_df_candidates([
             ("stock_individual_fund_flow", {"stock": stock_code}),
-            ("stock_individual_fund_flow", {"symbol": stock_code}),
             ("stock_individual_fund_flow", {}),
             ("stock_main_fund_flow", {"symbol": stock_code}),
             ("stock_main_fund_flow", {}),
