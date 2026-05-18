@@ -2732,6 +2732,22 @@ class SearchService:
             try:
                 text = fetch_url_content(item.url, timeout=5)
                 if not text:
+                    # newspaper3k 对 SPA 网站常返回空，回退到 requests + HTML 清洗
+                    try:
+                        r = requests.get(
+                            item.url,
+                            headers={"User-Agent": "Mozilla/5.0"},
+                            timeout=5,
+                        )
+                        html = r.text
+                        html = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL)
+                        html = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.DOTALL)
+                        html = re.sub(r"<[^>]+>", " ", html)
+                        html = re.sub(r"\s+", " ", html).strip()
+                        text = html[:1500]
+                    except Exception:
+                        return None
+                if not text:
                     return None
                 return self._extract_date_from_text(text)
             except Exception:
