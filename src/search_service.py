@@ -1898,9 +1898,6 @@ class SearXNGSearchProvider(BaseSearchProvider):
                 "format": "json",
                 "time_range": self._time_range(days),
                 "pageno": 1,
-                # Prefer engines with better Chinese support; SearXNG ignores
-                # unavailable engines and falls back to defaults automatically.
-                "engines": "duckduckgo,baidu",
             }
 
             request_get = _get_with_retry if retry_enabled else requests.get
