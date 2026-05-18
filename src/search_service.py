@@ -17,6 +17,7 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from typing import List, Dict, Any, Optional, Tuple
@@ -1897,6 +1898,9 @@ class SearXNGSearchProvider(BaseSearchProvider):
                 "format": "json",
                 "time_range": self._time_range(days),
                 "pageno": 1,
+                # Prefer engines with better Chinese support; SearXNG ignores
+                # unavailable engines and falls back to defaults automatically.
+                "engines": "duckduckgo,baidu",
             }
 
             request_get = _get_with_retry if retry_enabled else requests.get
@@ -1958,6 +1962,8 @@ class SearXNGSearchProvider(BaseSearchProvider):
                         published_date = dt.strftime("%Y-%m-%d")
                     except (ValueError, AttributeError):
                         published_date = raw_published_date
+                else:
+                    published_date = None
 
                 results.append(
                     SearchResult(
@@ -2690,6 +2696,95 @@ class SearchService:
         )
 
     @staticmethod
+    def _extract_date_from_text(text: str) -> Optional[str]:
+        """从文本中提取可能的日期字符串，供 _normalize_news_publish_date 解析。"""
+        if not text:
+            return None
+
+        patterns = [
+            r"\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日?",
+            r"\d{4}[\-/.]\d{1,2}[\-/.]\d{1,2}",
+            r"\d{8}",
+            r"(?:[A-Z][a-z]+ \d{1,2},? \d{4}|\d{1,2} [A-Z][a-z]+ \d{4})",
+            r"(?:今天|今日|昨天|前天|\d+\s*(?:分钟|小时|天|周|个月|月|年)\s*前|\d+\s*(?:minute|hour|day|week|month|year)s?\s*ago)",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match:
+                return match.group(0)
+
+        return None
+
+    def _resolve_missing_dates_via_fetch(
+        self,
+        response: SearchResponse,
+    ) -> SearchResponse:
+        """对 published_date 为 None 的新闻，fetch 网页正文并用正则提取日期。"""
+        if not response.success or not response.results:
+            return response
+
+        items_to_resolve = [
+            (i, item) for i, item in enumerate(response.results)
+            if not item.published_date
+        ]
+        if not items_to_resolve:
+            return response
+
+        def _fetch_for_item(item: SearchResult) -> Optional[str]:
+            try:
+                text = fetch_url_content(item.url, timeout=5)
+                if not text:
+                    return None
+                return self._extract_date_from_text(text)
+            except Exception:
+                return None
+
+        resolved_dates: Dict[int, Optional[str]] = {}
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_idx = {
+                executor.submit(_fetch_for_item, item): idx
+                for idx, item in items_to_resolve
+            }
+            for future in as_completed(future_to_idx):
+                idx = future_to_idx[future]
+                try:
+                    date_str = future.result()
+                    if date_str:
+                        normalized = self._normalize_news_publish_date(date_str)
+                        if normalized is not None:
+                            resolved_dates[idx] = normalized.isoformat()
+                except Exception:
+                    pass
+
+        if not resolved_dates:
+            return response
+
+        new_results = []
+        for i, item in enumerate(response.results):
+            if i in resolved_dates:
+                new_results.append(
+                    SearchResult(
+                        title=item.title,
+                        snippet=item.snippet,
+                        url=item.url,
+                        source=item.source,
+                        published_date=resolved_dates[i],
+                    )
+                )
+            else:
+                new_results.append(item)
+
+        return SearchResponse(
+            query=response.query,
+            results=new_results,
+            provider=response.provider,
+            success=response.success,
+            error_message=response.error_message,
+            search_time=response.search_time,
+        )
+
+    @staticmethod
     def _limit_search_response(
         response: SearchResponse,
         *,
@@ -2813,6 +2908,7 @@ class SearchService:
                     )
 
                 response = provider.search(query, provider_max_results, days=search_days, **search_kwargs)
+                response = self._resolve_missing_dates_via_fetch(response)
                 filtered_response = self._filter_news_response(
                     response,
                     search_days=search_days,
@@ -3134,6 +3230,7 @@ class SearchService:
                     max_results=provider_max_results,
                     days=search_days,
                 )
+            response = self._resolve_missing_dates_via_fetch(response)
             if dim['strict_freshness']:
                 filtered_response = self._filter_news_response(
                     response,
