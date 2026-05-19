@@ -58,7 +58,6 @@ class WebScraper:
         self.max_retries = max_retries
 
         # 运行时状态
-        self._browser = None
         self._context = None
         self._page = None
 
@@ -72,11 +71,10 @@ class WebScraper:
         if self._browser is not None and self._context is not None:
             return True
 
-        browser, context = self.auth.create_context(headless=True)
-        if browser is None or context is None:
+        context = self.auth.create_context(headless=True)
+        if context is None:
             return False
 
-        self._browser = browser
         self._context = context
         self._page = context.new_page()
         return True
@@ -248,6 +246,9 @@ class WebScraper:
 
     def close(self) -> None:
         """关闭浏览器，释放资源"""
+        if self._page:
+            self._page = None
+
         if self._context:
             try:
                 self._context.close()
@@ -255,14 +256,6 @@ class WebScraper:
                 logger.debug(f"关闭 context 时出错: {e}")
             self._context = None
 
-        if self._browser:
-            try:
-                self._browser.close()
-            except Exception as e:
-                logger.debug(f"关闭 browser 时出错: {e}")
-            self._browser = None
-
-        self._page = None
         logger.info("爬虫资源已释放")
 
     def __enter__(self):

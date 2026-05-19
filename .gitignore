@@ -57,13 +57,17 @@ env/
 logs/
 reports/
 
-# Tushare 浏览器登录态（通过 git 同步）
+# Tushare 浏览器登录态（不通过 git 同步，仅保留目录占位）
 /state/*/
 !/state/tushare/
-!/state/tushare/**
+!/state/tushare/.gitkeep
+/state/tushare/persistent_context/
 *.db
 *.sqlite
 *.sqlite3
+
+# 爬虫打包的登录态文件
+*tushare*_state.zip
 
 # 系统文件
 .DS_Store
@@ -90,3 +94,4 @@ static/
 /apps/dsa-desktop/dist/
 /apps/dsa-desktop/node_modules/
 docs/specs/
+..bfg-report/

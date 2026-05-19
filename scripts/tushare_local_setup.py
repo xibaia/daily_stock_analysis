@@ -12,7 +12,7 @@ Tushare 本地登录 Setup 脚本（最小化独立版）
 
 用法：
     python tushare_local_setup.py
-    python tushare_local_setup.py --username ***REMOVED*** --password ***REMOVED***
+    python tushare_local_setup.py --username 你的手机号 --password 你的密码
     python tushare_local_setup.py --output ~/Desktop/tushare_state.zip
 
 步骤：
@@ -38,8 +38,8 @@ TUSHARE_NEWS_URL = "https://tushare.pro/news/sina"
 
 def main():
     parser = argparse.ArgumentParser(description="Tushare 本地登录 Setup")
-    parser.add_argument("--username", default=os.environ.get("TUSHARE_USERNAME", "***REMOVED***"), help="手机号/邮箱")
-    parser.add_argument("--password", default=os.environ.get("TUSHARE_PASSWORD", "***REMOVED***"), help="密码")
+    parser.add_argument("--username", default=os.environ.get("TUSHARE_USERNAME", ""), help="手机号/邮箱")
+    parser.add_argument("--password", default=os.environ.get("TUSHARE_PASSWORD", ""), help="密码")
     parser.add_argument("--output", default="tushare_news_state.zip", help="输出 zip 路径")
     parser.add_argument("--state-dir", default="./state/tushare", help="状态目录（默认 git 追踪目录）")
     args = parser.parse_args()
@@ -70,11 +70,12 @@ def main():
     input("按 Enter 键开始...")
 
     print("\n正在启动 CloakBrowser (headed 模式)...")
-    browser = cloakbrowser.launch(headless=False, humanize=True)
 
     try:
-        context = browser.launch_persistent_context(
+        context = cloakbrowser.launch_persistent_context(
             str(state_path),
+            headless=False,
+            humanize=True,
             viewport={"width": 1920, "height": 1080},
         )
         page = context.new_page()
@@ -181,7 +182,10 @@ def main():
         print(f"  4. 运行检查：python -m src.crawler.tushare_news --check")
 
     finally:
-        browser.close()
+        try:
+            context.close()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

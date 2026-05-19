@@ -12,7 +12,7 @@
 CloakBrowser 特性：
 - 源码级 57 个 C++ 补丁，反检测能力强
 - humanize=True 模拟真实鼠标轨迹和键盘输入
-- launch_persistent_context() 一行恢复登录态
+- cloakbrowser.launch_persistent_context() 一行恢复登录态
 """
 
 import logging
@@ -110,16 +110,12 @@ class CrawlerAuth:
 
         logger.info(f"启动 CloakBrowser headed 模式，登录页: {self.login_url}")
 
-        # 启动 headed 浏览器，humanize=True 让行为更像真人
-        browser = cloakbrowser.launch(
-            headless=False,
-            humanize=True,
-        )
-
         try:
             # 使用 persistent context，登录后会自动保存
-            context = browser.launch_persistent_context(
+            context = cloakbrowser.launch_persistent_context(
                 str(self.state_path),
+                headless=False,
+                humanize=True,
                 viewport={"width": 1920, "height": 1080},
             )
             page = context.new_page()
@@ -144,7 +140,7 @@ class CrawlerAuth:
             return True
 
         finally:
-            browser.close()
+            pass
 
     def create_context(self, headless: bool = True):
         """
@@ -154,7 +150,7 @@ class CrawlerAuth:
             headless: 是否无头模式（日常爬取用 True）
 
         Returns:
-            tuple: (browser, context) 或 (None, None) 如果 state 无效
+            BrowserContext: Playwright BrowserContext 对象，登录态无效时返回 None
         """
         try:
             import cloakbrowser
@@ -171,17 +167,14 @@ class CrawlerAuth:
 
         logger.info(f"使用已保存的登录态启动 CloakBrowser (headless={headless})")
 
-        browser = cloakbrowser.launch(
+        context = cloakbrowser.launch_persistent_context(
+            str(self.state_path),
             headless=headless,
             humanize=True,
-        )
-
-        context = browser.launch_persistent_context(
-            str(self.state_path),
             viewport={"width": 1920, "height": 1080},
         )
 
-        return browser, context
+        return context
 
     def check_login_status(self, page) -> bool:
         """

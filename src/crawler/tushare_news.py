@@ -47,7 +47,6 @@ class TushareNewsScraper:
         self.storage = TushareNewsStorage()
 
         # 运行时状态
-        self._browser = None
         self._context = None
         self._page = None
         self._intercepted_data: List[Dict[str, Any]] = []
@@ -57,8 +56,8 @@ class TushareNewsScraper:
     # ------------------------------------------------------------------
 
     def _ensure_browser(self) -> bool:
-        """确保浏览器已启动"""
-        if self._browser is not None:
+        """确保 cloakbrowser 已安装"""
+        if self._context is not None:
             return True
 
         try:
@@ -67,11 +66,6 @@ class TushareNewsScraper:
             logger.error("cloakbrowser 未安装")
             return False
 
-        logger.info(f"启动 CloakBrowser (headless={True})")
-        self._browser = cloakbrowser.launch(
-            headless=True,
-            humanize=True,
-        )
         return True
 
     def _create_context(self) -> bool:
@@ -98,8 +92,10 @@ class TushareNewsScraper:
                 return False
 
         try:
-            self._context = self._browser.launch_persistent_context(
+            self._context = cloakbrowser.launch_persistent_context(
                 str(state_path),
+                headless=True,
+                humanize=True,
                 viewport={"width": 1920, "height": 1080},
             )
             self._page = self._context.new_page()
@@ -658,6 +654,9 @@ class TushareNewsScraper:
 
     def close(self) -> None:
         """关闭浏览器，释放资源"""
+        if self._page:
+            self._page = None
+
         if self._context:
             try:
                 self._context.close()
@@ -665,14 +664,6 @@ class TushareNewsScraper:
                 logger.debug(f"关闭 context 时出错: {e}")
             self._context = None
 
-        if self._browser:
-            try:
-                self._browser.close()
-            except Exception as e:
-                logger.debug(f"关闭 browser 时出错: {e}")
-            self._browser = None
-
-        self._page = None
         logger.info("爬虫资源已释放")
 
     def __enter__(self):

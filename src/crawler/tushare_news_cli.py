@@ -89,14 +89,11 @@ def cmd_setup(args):
 
     logger.info(f"启动 CloakBrowser headed 模式，登录页: {config.login_url}")
 
-    browser = cloakbrowser.launch(
-        headless=False,
-        humanize=True,
-    )
-
     try:
-        context = browser.launch_persistent_context(
+        context = cloakbrowser.launch_persistent_context(
             str(state_path),
+            headless=False,
+            humanize=True,
             viewport={"width": 1920, "height": 1080},
         )
         page = context.new_page()
@@ -165,7 +162,7 @@ def cmd_setup(args):
         return True
 
     finally:
-        browser.close()
+        pass
 
 
 def cmd_check(args):
