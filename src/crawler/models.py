@@ -77,3 +77,40 @@ class ScrapedDataBatch:
 
     def __len__(self) -> int:
         return len(self.records)
+
+
+@dataclass
+class TushareNewsRecord:
+    """
+    Tushare 新浪财经单条新闻记录
+
+    Fields:
+        title: 新闻标题
+        url: 新闻链接
+        source: 新闻来源（如"新浪财经"）
+        published_date: 发布时间
+        related_stocks: 关联股票代码列表
+        code: 主关联股票代码或 "MARKET"
+        content_summary: 内容摘要
+        fetched_at: 爬取时间
+    """
+    title: str
+    url: str
+    source: str = ""
+    published_date: Optional[datetime] = None
+    related_stocks: List[str] = field(default_factory=list)
+    code: str = "MARKET"
+    content_summary: str = ""
+    fetched_at: datetime = field(default_factory=datetime.now)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "title": self.title,
+            "url": self.url,
+            "source": self.source,
+            "published_date": self.published_date.isoformat() if self.published_date else None,
+            "related_stocks": ",".join(self.related_stocks) if self.related_stocks else "",
+            "code": self.code,
+            "content_summary": self.content_summary,
+            "fetched_at": self.fetched_at.isoformat(),
+        }

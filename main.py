@@ -936,6 +936,50 @@ def main() -> int:
                 run_full_analysis(runtime_config, args, scheduled_stock_codes)
 
             background_tasks = []
+
+            # Tushare 新闻爬虫后台任务
+            try:
+                from src.crawler.config import TushareNewsConfig
+                tushare_config = TushareNewsConfig.load()
+                if tushare_config.enabled:
+                    from src.crawler.tushare_news import TushareNewsScraper
+                    from src.crawler.storage import TushareNewsStorage
+
+                    _tushare_last_run_date = None
+
+                    def tushare_news_task():
+                        global _tushare_last_run_date
+                        now = datetime.now()
+                        today = now.date()
+
+                        # 检查今天是否已执行
+                        if _tushare_last_run_date == today:
+                            return
+
+                        # 检查是否到达执行时间
+                        schedule_hour, schedule_minute = map(int, tushare_config.schedule_time.split(":"))
+                        if now.hour < schedule_hour or (now.hour == schedule_hour and now.minute < schedule_minute):
+                            return
+
+                        logger.info("[TushareNews] 开始执行每日新闻爬取")
+                        try:
+                            scraper = TushareNewsScraper(tushare_config)
+                            saved = scraper.run()
+                            logger.info("[TushareNews] 爬取完成，保存 %d 条新闻", saved)
+                            _tushare_last_run_date = today
+                        except Exception as e:
+                            logger.exception("[TushareNews] 爬取失败: %s", e)
+
+                    background_tasks.append({
+                        "task": tushare_news_task,
+                        "interval_seconds": 3600,  # 每小时检查一次
+                        "run_immediately": True,
+                        "name": "tushare_news_crawler",
+                    })
+                    logger.info("[TushareNews] 已注册后台任务，执行时间: %s", tushare_config.schedule_time)
+            except ImportError as e:
+                logger.debug("[TushareNews] 模块未加载: %s", e)
+
             if getattr(config, 'agent_event_monitor_enabled', False):
                 from src.services.alert_worker import AlertWorker
 

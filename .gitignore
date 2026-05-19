@@ -56,6 +56,11 @@ env/
 /data/
 logs/
 reports/
+
+# Tushare 浏览器登录态（通过 git 同步）
+/state/*/
+!/state/tushare/
+!/state/tushare/**
 *.db
 *.sqlite
 *.sqlite3

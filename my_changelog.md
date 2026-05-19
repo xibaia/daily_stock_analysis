@@ -59,3 +59,70 @@
 
 - 新增 `ADMIN_AUTH_ENABLED` 环境变量完整英文说明（该变量此前缺失英文文档）。
   - 涵盖管理员密码设置、重置方式、访客密码设置、角色化 session 使旧 Cookie 失效、`.env` 备份权限限制。
+
+---
+
+## Tushare Pro 新浪财经新闻爬取（2026-05-19）
+
+### 新增模块
+
+在 `src/crawler/` 下新增独立的新闻爬取模块，不修改主项目任何配置和数据库模型：
+
+- **`src/crawler/config.py`** — 独立配置读取（`TUSHARE_NEWS_*` 环境变量）
+- **`src/crawler/storage.py`** — 独立 SQLAlchemy 存储层，表名 `tushare_news`
+- **`src/crawler/tushare_news.py`** — 核心爬虫（API 拦截优先 + DOM 兜底 + 分页 + 自动填表）
+- **`src/crawler/tushare_news_cli.py`** — CLI 入口（`--setup` / `--check` / `--run` / `--test` / `--cleanup`）
+- **`tests/test_tushare_news.py`** — 19 个单元测试全部通过
+
+### 数据模型
+
+- 表名: `tushare_news`
+- 字段: `title`, `url`, `source`, `published_date`, `code`, `related_stocks`, `content_summary`, `fetched_at`
+- 市场新闻 `code = MARKET`，个股新闻 `code = 对应股票代码`
+- URL 唯一约束去重
+
+### 配置项（`.env` 中设置）
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `TUSHARE_NEWS_ENABLED` | `false` | 功能开关 |
+| `TUSHARE_NEWS_SCHEDULE_TIME` | `08:00` | 每日执行时间 |
+| `TUSHARE_NEWS_STATE_DIR` | `./data/tushare_news_state` | 登录态目录 |
+| `TUSHARE_NEWS_REQUEST_INTERVAL` | `2.0` | 请求间隔 |
+| `TUSHARE_NEWS_MAX_RETRIES` | `3` | 重试次数 |
+| `TUSHARE_NEWS_MAX_PAGES` | `10` | 最大页数 |
+| `TUSHARE_NEWS_MAX_AGE_DAYS` | `30` | 数据保留天数 |
+| `TUSHARE_NEWS_USERNAME` | `""` | 登录用户名（自动填表） |
+| `TUSHARE_NEWS_PASSWORD` | `""` | 登录密码（自动填表） |
+
+### Schedule 集成
+
+- `main.py` 的 `--schedule` 模式已集成 Tushare 新闻后台任务
+- 每小时检查一次，到达设定时间后执行爬取
+- 幂等：同一天不会重复爬取
+
+### 使用方式
+
+```bash
+# 首次登录（需在本地 headed 环境运行）
+python -m src.crawler.tushare_news --setup
+
+# 检查登录态
+python -m src.crawler.tushare_news --check
+
+# 执行爬取
+python -m src.crawler.tushare_news --run
+
+# 测试爬取（不保存）
+python -m src.crawler.tushare_news --test
+
+# 清理旧数据
+python -m src.crawler.tushare_news --cleanup
+```
+
+### 技术要点
+
+- **API 拦截优先**：Vue.js SPA 的数据通过 XHR 加载，优先拦截 `/wctapi/` 响应提取 JSON
+- **DOM 兜底**：API 拦截失败时自动降级为 DOM 解析，保存快照供调试
+- **自动填表**：`--setup` 时自动填入 `TUSHARE_NEWS_USERNAME` / `TUSHARE_NEWS_PASSWORD`
+- **状态持久化**：CloakBrowser `persistent_context` 保存 Cookie/LocalStorage，配置一次运行数月
