@@ -526,6 +526,7 @@ class DataFetcherManager:
         "LongbridgeFetcher": {"hk", "us"},
         "FinnhubFetcher": {"us"},
         "AlphaVantageFetcher": {"us"},
+        "WebScraperFetcher": {"cn"},  # TODO: 目标网站确定后调整支持的市场
     }
     
     def __init__(self, fetchers: Optional[List[BaseFetcher]] = None):
@@ -1052,6 +1053,18 @@ class DataFetcherManager:
             optional_fetchers.append(AlphaVantageFetcher())
         else:
             logger.debug("[数据源初始化] 跳过未配置的 AlphaVantageFetcher")
+
+        # Web 登录爬虫数据源（可选，需配置 CRAWLER_ENABLED=true）
+        try:
+            from .web_scraper_fetcher import WebScraperFetcher
+            ws_fetcher = WebScraperFetcher()
+            if ws_fetcher.is_available:
+                optional_fetchers.append(ws_fetcher)
+                logger.info("[数据源初始化] WebScraperFetcher 已启用")
+            else:
+                logger.debug("[数据源初始化] 跳过未配置或登录态无效的 WebScraperFetcher")
+        except Exception as e:
+            logger.debug(f"[数据源初始化] WebScraperFetcher 加载失败: {e}")
 
         # 初始化数据源列表
         self._ensure_concurrency_guards()

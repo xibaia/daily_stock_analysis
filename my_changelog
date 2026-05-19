@@ -1,0 +1,23 @@
+# Web 登录爬虫变更日志
+
+## 2026-05-19
+
+### 新增
+- Web 登录爬虫数据源（`WebScraperFetcher`），基于 CloakBrowser 源码级反检测 Chromium
+- 支持 cookie/state 持久化登录态，作为现有数据源的 fallback 兜底
+- `src/crawler/` 爬虫核心包：auth.py（登录认证）、scraper.py（页面爬取骨架）、models.py（数据模型）、__main__.py（CLI 工具）
+- `data_provider/web_scraper_fetcher.py` — BaseFetcher 适配器，已接入 DataFetcherManager fallback 链路
+
+### 修改
+- `requirements.txt` — 添加 `cloakbrowser`
+- `data_provider/base.py` — 注册 WebScraperFetcher + 市场支持映射 `{cn}`
+- `data_provider/__init__.py` — 导出 `WebScraperFetcher`
+- `docker/Dockerfile` — 添加 19 个 Chromium 运行时 apt 依赖
+- `docker/docker-compose.yml` — 添加 `crawler_state` volume 持久化
+- `.env.example` — 添加 `CRAWLER_*` 配置项
+
+### TODO（等目标网站确定后实现）
+- `scraper.py` `_parse_data()` — 页面 DOM 解析逻辑（金融数据网站）
+- `scraper.py` `crawl_all_pages()` — 分页策略
+- `auth.py` `check_login_status()` — 登录态检测逻辑
+- 新闻数据网站 → 另起独立 scraper 模块
