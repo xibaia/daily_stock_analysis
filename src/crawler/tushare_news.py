@@ -229,42 +229,136 @@ class TushareNewsScraper:
         return all_records
 
     def _crawl_all_pages(self) -> List[TushareNewsRecord]:
-        """爬取所有分页数据"""
+        """
+        爬取所有新闻源 + 所有频道的新闻数据。
+
+        Tushare Pro 新闻页有两层 tab：
+        1. 上层：新闻源（雪球、第一财经、新浪财经等）
+        2. 下层：频道（国际、市场、宏观、公司等）
+
+        逐个遍历每个新闻源的每个频道，抓取所有新闻，最后汇总去重。
+        """
         all_records: List[TushareNewsRecord] = []
 
-        for page_num in range(1, self.config.max_pages + 1):
-            logger.info(f"爬取第 {page_num} 页...")
+        # 先获取当前页面的所有新闻源列表
+        source_urls = self._get_all_source_urls()
+        logger.info(f"发现 {len(source_urls)} 个新闻源: {', '.join([s[0] for s in source_urls])}")
 
-            # 尝试从拦截的 API 数据中提取
-            records = self._extract_from_api_interception()
-            if records:
+        for source_idx, (source_name, source_url) in enumerate(source_urls):
+            logger.info(f"\n{'='*40}")
+            logger.info(f"[{source_idx+1}/{len(source_urls)}] 新闻源: {source_name}")
+            logger.info(f"{'='*40}")
+
+            try:
+                # 如果不是当前页面，导航到该新闻源
+                current_url = self._page.url
+                if source_url not in current_url:
+                    logger.info(f"导航到: {source_url}")
+                    self._page.goto(source_url, wait_until="networkidle", timeout=30000)
+                    time.sleep(3)
+
+                # 抓取该新闻源的所有频道
+                records = self._crawl_all_channels()
                 all_records.extend(records)
-                logger.info(f"第 {page_num} 页: API 拦截提取 {len(records)} 条")
+                logger.info(f"新闻源 [{source_name}] 共提取 {len(records)} 条")
 
-            # 尝试 DOM 解析兜底
-            if not records:
-                records = self._extract_from_dom()
-                if records:
-                    all_records.extend(records)
-                    logger.info(f"第 {page_num} 页: DOM 解析提取 {len(records)} 条")
+            except Exception as e:
+                logger.warning(f"新闻源 [{source_name}] 抓取失败: {e}")
+                continue
 
-            # 尝试触发下一页
-            has_more = self._goto_next_page()
-            if not has_more:
-                logger.info("没有更多页面")
-                break
-
-            time.sleep(self.config.request_interval)
-
-        # 去重
-        seen_urls = set()
+        # 去重（URL 为空时用标题去重）
+        seen_keys = set()
         unique_records = []
         for r in all_records:
-            if r.url not in seen_urls:
-                seen_urls.add(r.url)
+            if not r.title or r.title.strip() == "":
+                continue
+            key = r.url if r.url else r.title
+            if key not in seen_keys:
+                seen_keys.add(key)
                 unique_records.append(r)
 
         return unique_records
+
+    def _get_all_source_urls(self) -> List[tuple]:
+        """获取页面上所有新闻源的 (名称, URL) 列表"""
+        sources = []
+        try:
+            tabs = self._page.locator("#data_source_head .source_name").all()
+            for tab in tabs:
+                try:
+                    text = tab.text_content().strip()
+                    link = tab.locator("a").first
+                    href = link.get_attribute("href") if link else ""
+                    if href and not href.startswith("http"):
+                        href = urljoin(self.config.base_url, href)
+                    sources.append((text, href or self.config.data_url))
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning(f"获取新闻源列表失败: {e}")
+            # fallback：只返回当前页面
+            sources.append(("当前", self.config.data_url))
+
+        return sources
+
+    def _crawl_all_channels(self) -> List[TushareNewsRecord]:
+        """抓取当前新闻源页面的所有频道 tab"""
+        all_records: List[TushareNewsRecord] = []
+
+        # 先抓取当前可见频道
+        records = self._extract_from_page()
+        all_records.extend(records)
+
+        # 获取所有频道 tab，逐个点击抓取
+        try:
+            tabs = self._page.locator("#channel_head .channel_name").all()
+            logger.info(f"  发现 {len(tabs)} 个频道")
+
+            for i, tab in enumerate(tabs):
+                try:
+                    tab_text = tab.text_content().strip()
+                    tab_class = tab.get_attribute("class") or ""
+
+                    # 跳过当前已选中的频道（已抓取过）
+                    if "cur" in tab_class:
+                        logger.debug(f"  频道 [{tab_text}] 已是当前选中，跳过")
+                        continue
+
+                    if not tab.is_visible():
+                        continue
+
+                    logger.info(f"  点击频道 [{tab_text}] ({i+1}/{len(tabs)})...")
+                    tab.click()
+                    time.sleep(2)
+
+                    records = self._extract_from_page()
+                    all_records.extend(records)
+                    logger.info(f"  频道 [{tab_text}] 提取 {len(records)} 条")
+
+                except Exception as e:
+                    logger.debug(f"  处理频道 tab 时出错: {e}")
+                    continue
+
+        except Exception as e:
+            logger.debug(f"获取频道 tab 失败: {e}")
+
+        return all_records
+
+    def _extract_from_page(self) -> List[TushareNewsRecord]:
+        """从当前页面提取新闻（先尝试 API 拦截，再用 DOM 兜底）"""
+        # 先尝试 API 拦截提取
+        records = self._extract_from_api_interception()
+        if records:
+            logger.info(f"API 拦截提取 {len(records)} 条")
+            return records
+
+        # API 拦截失败时，用 DOM 解析兜底
+        records = self._extract_from_dom()
+        if records:
+            logger.info(f"DOM 解析提取 {len(records)} 条")
+            return records
+
+        return []
 
     # ------------------------------------------------------------------
     # 数据提取：API 拦截
@@ -458,10 +552,16 @@ class TushareNewsScraper:
 
         try:
             # 尝试多种常见的新闻列表选择器
+            # 注意：tushare.pro 实际使用下划线命名 (news_item)
+            # 页面有多个频道，只取当前可见的 cur 频道
             selectors = [
+                # Tushare Pro 实际结构（精确：当前可见频道下的新闻条目）
+                ".news_data.cur .news_item",
+                ".news_data .news_item",
+                ".news_item",
                 # Element UI 表格
                 ".el-table__row",
-                # 常见新闻列表
+                # 常见新闻列表（横线命名）
                 ".news-item", ".news-list-item", ".article-item",
                 ".news-card", ".info-item", ".list-item",
                 # 更通用的
@@ -487,18 +587,27 @@ class TushareNewsScraper:
         """解析单个 DOM 元素为新闻记录"""
         try:
             # 尝试提取标题
+            # Tushare Pro 结构: .news_content 包含 【标题】摘要
             title_selectors = [
-                "a", ".title", "h3", "h4", "h2", ".news-title",
+                ".news_content", "a", ".title", "h3", "h4", "h2", ".news-title",
                 "[class*='title']", "[class*='headline']"
             ]
             title = None
+            raw_content = None
             for sel in title_selectors:
                 try:
                     el = element.locator(sel).first
                     if el.is_visible():
-                        title = el.text_content().strip()
-                        if title:
-                            break
+                        text = el.text_content().strip()
+                        if text:
+                            raw_content = text
+                            # 处理 【标题】摘要 格式（Tushare Pro 结构）
+                            if text.startswith("【") and "】" in text:
+                                title = text[text.find("【")+1:text.find("】")]
+                            else:
+                                title = text.split("\n")[0].strip()  # 取第一行
+                            if title:
+                                break
                 except:
                     continue
 
@@ -516,8 +625,12 @@ class TushareNewsScraper:
                 pass
 
             # 尝试提取时间
+            # Tushare Pro 结构: .news_datetime
             pub_date = None
-            time_selectors = [".time", ".date", ".pub-time", "[class*='time']", "[class*='date']"]
+            time_selectors = [
+                ".news_datetime", ".time", ".date", ".pub-time",
+                "[class*='time']", "[class*='date']"
+            ]
             for sel in time_selectors:
                 try:
                     el = element.locator(sel).first
@@ -543,6 +656,15 @@ class TushareNewsScraper:
                 except:
                     continue
 
+            # 提取摘要（从 raw_content 中去掉标题部分）
+            summary = ""
+            if raw_content and title in raw_content:
+                idx = raw_content.find("】")
+                if idx != -1 and idx + 1 < len(raw_content):
+                    summary = raw_content[idx + 1:].strip()
+                else:
+                    summary = raw_content.replace(title, "").strip()
+
             # 提取关联股票
             related = self._extract_related_stocks({"title": title})
             code = related[0] if related else "MARKET"
@@ -554,6 +676,7 @@ class TushareNewsScraper:
                 published_date=pub_date,
                 related_stocks=related,
                 code=code,
+                content_summary=summary[:500],
             )
 
         except Exception as e:

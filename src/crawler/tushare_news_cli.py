@@ -38,6 +38,7 @@ except ImportError:
 
 from .config import TushareNewsConfig
 from .storage import TushareNewsStorage
+from .sync import export_news, _default_sync_file
 from .tushare_news import TushareNewsScraper
 
 logging.basicConfig(
@@ -211,7 +212,7 @@ def cmd_check(args):
 
 
 def cmd_run(args):
-    """执行爬取并保存"""
+    """执行爬取并保存（可选导出同步文件）"""
     config = _load_config()
 
     if not config.enabled:
@@ -230,6 +231,28 @@ def cmd_run(args):
         print(f"\n✅ 爬取完成，保存 {saved} 条新闻")
     else:
         print(f"\n⚠️  未保存任何新闻（可能已存在或爬取失败）")
+
+    # 导出同步文件（供手动 scp 到服务器）
+    if getattr(args, "export", False):
+        from pathlib import Path
+        import os
+
+        db_path = os.getenv("DATABASE_PATH", "./data/stock_analysis.db")
+        output = _default_sync_file()
+
+        print(f"\n📦 正在导出同步文件...")
+        count = export_news(db_path, output)
+
+        if count > 0:
+            sync_file = Path(output).resolve()
+            print(f"✅ 导出完成: {count} 条 -> {sync_file}")
+            print(f"\n👉 请手动 scp 到服务器:")
+            print(f"   scp {sync_file} user@server:/path/to/data/")
+            print(f"   然后在服务器执行: python -m src.crawler.sync import -i /path/to/data/tushare_news_sync.db")
+        elif count == 0:
+            print("⚠️  无可导出数据")
+        else:
+            print("❌ 导出失败")
 
     sys.exit(0 if saved >= 0 else 1)
 
@@ -290,6 +313,11 @@ def main():
         "--run",
         action="store_true",
         help="执行爬取并保存到数据库",
+    )
+    parser.add_argument(
+        "--export",
+        action="store_true",
+        help="爬取完成后导出同步文件到固定目录（供手动 scp 到服务器）",
     )
     parser.add_argument(
         "--test",

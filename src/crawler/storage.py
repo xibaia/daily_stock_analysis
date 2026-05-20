@@ -131,11 +131,19 @@ class TushareNewsStorage:
 
         try:
             for record in records:
-                existing = (
-                    session.query(TushareNews)
-                    .filter(TushareNews.url == record.url)
-                    .first()
-                )
+                # URL 为空时按标题查重，避免 UNIQUE 约束冲突
+                if record.url:
+                    existing = (
+                        session.query(TushareNews)
+                        .filter(TushareNews.url == record.url)
+                        .first()
+                    )
+                else:
+                    existing = (
+                        session.query(TushareNews)
+                        .filter(TushareNews.title == record.title)
+                        .first()
+                    )
 
                 if existing:
                     # 更新已有记录
@@ -148,9 +156,11 @@ class TushareNewsStorage:
                     existing.fetched_at = datetime.now()
                 else:
                     # 新增记录
+                    # URL 为空时用标题生成伪 URL，避免 UNIQUE 约束冲突
+                    url = record.url if record.url else f"#tushare_{hash(record.title) & 0xFFFFFFFF:08x}"
                     db_record = TushareNews(
                         title=record.title,
-                        url=record.url,
+                        url=url,
                         source=record.source,
                         published_date=record.published_date,
                         code=record.code,

@@ -52,6 +52,8 @@ class TushareNewsConfig:
         self.enabled: bool = _env_bool("TUSHARE_NEWS_ENABLED", False)
         self.schedule_time: str = _env("TUSHARE_NEWS_SCHEDULE_TIME", "08:00")
         self.state_dir: Path = Path(_env("TUSHARE_NEWS_STATE_DIR", "./data/tushare_news_state"))
+        # 同步目录：本机抓取后导出到此处，由用户手动 scp 到服务器
+        self.sync_dir: Path = Path(_env("TUSHARE_NEWS_SYNC_DIR", "./data/sync"))
         self.request_interval: float = _env_float("TUSHARE_NEWS_REQUEST_INTERVAL", 2.0)
         self.max_retries: int = _env_int("TUSHARE_NEWS_MAX_RETRIES", 3)
         self.max_age_days: int = _env_int("TUSHARE_NEWS_MAX_AGE_DAYS", 30)

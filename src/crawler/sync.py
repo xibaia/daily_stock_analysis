@@ -26,11 +26,21 @@ from typing import Optional
 
 from sqlalchemy import create_engine, inspect, text
 
+from .config import TushareNewsConfig
 from .storage import Base, TushareNews
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_SYNC_FILE = "data/tushare_news_sync.db"
+
+def _default_sync_file() -> str:
+    """返回默认的同步文件路径（基于配置中的 sync_dir）"""
+    config = TushareNewsConfig.load()
+    config.sync_dir.mkdir(parents=True, exist_ok=True)
+    return str(config.sync_dir / "tushare_news_sync.db")
+
+
+# 兼容旧代码：直接字符串默认值（实际使用时通过 _default_sync_file() 获取）
+DEFAULT_SYNC_FILE = "./data/sync/tushare_news_sync.db"
 
 
 def _get_engine(db_path: str):
@@ -258,7 +268,7 @@ def _resolve_db_path(args_db: Optional[str]) -> str:
 def cmd_export(args):
     """执行导出"""
     source_db = _resolve_db_path(args.db)
-    output = args.output or DEFAULT_SYNC_FILE
+    output = args.output or _default_sync_file()
 
     since = None
     if args.since:
@@ -275,9 +285,11 @@ def cmd_export(args):
         sys.exit(1)
 
     print(f"\n导出完成: {count} 条新闻")
-    print(f"同步文件: {Path(output).resolve()}")
-    print(f"\n下一步：将此文件上传到服务器，例如:")
-    print(f"  scp {output} user@server:/path/to/data/")
+    sync_file = Path(output).resolve()
+    print(f"同步文件: {sync_file}")
+    print(f"\n下一步：手动 scp 到服务器，例如:")
+    print(f"  scp {sync_file} user@server:/path/to/data/")
+    print(f"  然后在服务器执行: python -m src.crawler.sync import -i /path/to/data/tushare_news_sync.db")
 
 
 def cmd_import(args):
@@ -329,7 +341,7 @@ def main():
     export_parser.add_argument(
         "--output",
         "-o",
-        help=f"输出文件路径（默认: {DEFAULT_SYNC_FILE}）",
+        help="输出文件路径（默认: ./data/sync/tushare_news_sync.db，可通过 TUSHARE_NEWS_SYNC_DIR 环境变量修改）",
     )
     export_parser.set_defaults(func=cmd_export)
 

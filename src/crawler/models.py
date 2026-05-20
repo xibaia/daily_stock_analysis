@@ -11,7 +11,6 @@
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-import pandas as pd
 
 
 @dataclass
@@ -65,8 +64,9 @@ class ScrapedDataBatch:
     crawl_time: datetime = field(default_factory=datetime.now)
     raw_html_snapshot: Optional[str] = None
 
-    def to_dataframe(self) -> pd.DataFrame:
+    def to_dataframe(self):
         """转换为 pandas DataFrame，列名标准化"""
+        import pandas as pd
         if not self.records:
             return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume", "amount", "pct_chg"])
         data = [r.to_dict() for r in self.records]
