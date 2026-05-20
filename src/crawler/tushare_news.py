@@ -92,6 +92,7 @@ class TushareNewsScraper:
                 return False
 
         try:
+            import cloakbrowser
             self._context = cloakbrowser.launch_persistent_context(
                 str(state_path),
                 headless=True,
