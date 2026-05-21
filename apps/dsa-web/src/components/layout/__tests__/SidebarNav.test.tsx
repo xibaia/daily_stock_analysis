@@ -101,6 +101,18 @@ describe('SidebarNav', () => {
     expect(screen.queryByRole('link', { name: '设置' })).not.toBeInTheDocument();
   });
 
+  it('renders the alerts navigation item and marks it active', () => {
+    render(
+      <MemoryRouter initialEntries={['/alerts']}>
+        <SidebarNav />
+      </MemoryRouter>,
+    );
+
+    const alertsLink = screen.getByRole('link', { name: '告警' });
+    expect(alertsLink).toHaveAttribute('href', '/alerts');
+    expect(alertsLink).toHaveClass('font-medium');
+  });
+
   it('opens the logout confirmation and confirms logout', async () => {
     render(
       <MemoryRouter initialEntries={['/chat']}>
