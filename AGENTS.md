@@ -70,6 +70,30 @@ python scripts/check_ai_assets.py
 
 ## 4. 常用命令
 
+### 环境准备
+
+本项目使用 `.venv` 虚拟环境，**运行任何 Python 命令前必须先激活虚拟环境**：
+
+```bash
+# macOS / Linux (bash / zsh)
+source .venv/bin/activate
+
+# macOS / Linux (fish shell)
+source .venv/bin/activate.fish
+
+# Windows (PowerShell)
+.venv\Scripts\Activate.ps1
+
+# Windows (CMD)
+.venv\Scripts\activate.bat
+```
+
+安装 / 更新依赖：
+
+```bash
+pip install -r requirements.txt
+```
+
 ### 运行应用
 
 ```bash
@@ -218,6 +242,7 @@ gh run view <run_id> --log-failed
   - `.claude/skills/analyze-issue/SKILL.md`
   - `.claude/skills/analyze-pr/SKILL.md`
   - `.claude/skills/fix-issue/SKILL.md`
+  - `.claude/skills/tushare/SKILL.md` — Tushare 金融数据研究 skill（依赖 `tushare` 包 + `TUSHARE_TOKEN`）
 - 如果任务明确是 issue 分析、PR 审查、issue 修复，优先按对应 skill 执行，并将产物保存到 `.claude/reviews/`。
 - skill 中的命令、模板、验证顺序和交付结构必须与 `AGENTS.md` 保持一致。
 - skill 默认优先读取 CI / 工作流证据，再决定是否补本地验证。
