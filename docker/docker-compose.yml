@@ -67,3 +67,19 @@ services:
     # 若使用 network_mode: host，则以下 ports 映射无效，端口由 command 中的 --port 指定
     ports:
       - "127.0.0.1:${API_PORT:-8000}:${API_PORT:-8000}"
+
+  deepear:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.deepear
+    container_name: deepear-server
+    restart: unless-stopped
+    env_file:
+      - ../docker/deepear.env
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ../vendor/DeepEar/data:/workspace/vendor/DeepEar/data
+      - ../vendor/DeepEar/reports:/workspace/vendor/DeepEar/reports
+    ports:
+      - "127.0.0.1:${DEEPEAR_PORT:-8765}:8765"

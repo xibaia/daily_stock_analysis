@@ -1,13 +1,18 @@
 # -*- coding: utf-8 -*-
-"""
-===================================
-API v1 模块初始化
-===================================
+"""API v1 package exports."""
 
-职责：
-1. 导出 v1 版本 API 的路由
-"""
+from __future__ import annotations
 
-from api.v1.router import router as api_v1_router
+from typing import Any
 
 __all__ = ["api_v1_router"]
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily expose the v1 router to avoid eager endpoint imports."""
+
+    if name == "api_v1_router":
+        from api.v1.router import router as api_v1_router
+
+        return api_v1_router
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

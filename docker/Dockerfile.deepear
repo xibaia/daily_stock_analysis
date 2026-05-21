@@ -1,0 +1,40 @@
+FROM node:20-slim AS frontend-builder
+
+WORKDIR /workspace/vendor/DeepEar/dashboard/frontend
+
+COPY vendor/DeepEar/dashboard/frontend/package.json vendor/DeepEar/dashboard/frontend/package-lock.json ./
+RUN npm ci
+
+COPY vendor/DeepEar/dashboard/frontend/ ./
+COPY docker/deepear-overlay/dashboard/frontend/src/main.tsx ./src/main.tsx
+COPY docker/deepear-overlay/dashboard/frontend/src/ssoBridge.ts ./src/ssoBridge.ts
+RUN npm run build
+
+FROM python:3.12-slim-bookworm
+
+WORKDIR /workspace/vendor/DeepEar
+
+ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir uv
+
+COPY vendor/DeepEar/ /workspace/vendor/DeepEar/
+COPY docker/deepear-overlay/dashboard/frontend/src/main.tsx /workspace/vendor/DeepEar/dashboard/frontend/src/main.tsx
+COPY docker/deepear-overlay/dashboard/frontend/src/ssoBridge.ts /workspace/vendor/DeepEar/dashboard/frontend/src/ssoBridge.ts
+COPY --from=frontend-builder /workspace/vendor/DeepEar/dashboard/frontend/dist /workspace/vendor/DeepEar/dashboard/frontend/dist
+COPY docker/deepear-entrypoint.sh /usr/local/bin/deepear-entrypoint.sh
+
+RUN chmod +x /usr/local/bin/deepear-entrypoint.sh && \
+    uv sync --frozen
+
+EXPOSE 8765
+
+ENTRYPOINT ["/usr/local/bin/deepear-entrypoint.sh"]
+CMD ["uv", "run", "python", "-m", "dashboard.server"]

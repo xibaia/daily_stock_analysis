@@ -113,6 +113,18 @@ describe('SidebarNav', () => {
     expect(alertsLink).toHaveClass('font-medium');
   });
 
+  it('renders the DeepEar navigation item and marks it active', () => {
+    render(
+      <MemoryRouter initialEntries={['/deepear']}>
+        <SidebarNav />
+      </MemoryRouter>,
+    );
+
+    const deepearLink = screen.getByRole('link', { name: 'DeepEar' });
+    expect(deepearLink).toHaveAttribute('href', '/deepear');
+    expect(deepearLink).toHaveClass('font-medium');
+  });
+
   it('opens the logout confirmation and confirms logout', async () => {
     render(
       <MemoryRouter initialEntries={['/chat']}>

@@ -1,0 +1,3 @@
+[submodule "vendor/DeepEar"]
+	path = vendor/DeepEar
+	url = https://github.com/HKUSTDial/DeepEar.git

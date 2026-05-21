@@ -1,26 +1,11 @@
 # -*- coding: utf-8 -*-
-"""
-===================================
-API v1 Endpoints 模块初始化
-===================================
+"""API v1 endpoint package exports."""
 
-职责：
-1. 声明所有 endpoint 路由模块
-"""
+from __future__ import annotations
 
-from api.v1.endpoints import (
-    health,
-    analysis,
-    history,
-    stocks,
-    backtest,
-    system_config,
-    auth,
-    agent,
-    usage,
-    portfolio,
-    alerts,
-)
+from importlib import import_module
+from typing import Any
+
 __all__ = [
     "health",
     "analysis",
@@ -33,4 +18,13 @@ __all__ = [
     "usage",
     "portfolio",
     "alerts",
+    "deepear",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily import endpoint modules on first access."""
+
+    if name in __all__:
+        return import_module(f"{__name__}.{name}")
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

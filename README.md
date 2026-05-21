@@ -166,6 +166,29 @@ python main.py --serve-only
 
 > Docker 部署、定时任务、云服务器访问请参考 [完整指南](docs/full-guide.md)；桌面客户端打包请参考 [桌面端打包说明](docs/desktop-package.md)。
 
+#### DeepEar 子模块集成
+
+当前仓库已支持把 `DeepEar` 作为独立子系统接入到 DSA Web 工作台中。
+
+```bash
+# 首次拉取后初始化子模块
+git submodule update --init --recursive
+
+# DeepEar 独立配置
+cp docker/deepear.env.example docker/deepear.env
+
+# 本机联调：启动 DSA Web/API + DeepEar
+docker compose -f docker/docker-compose.yml up -d --build server deepear
+```
+
+完成后：
+
+- DSA 主站默认访问 `http://127.0.0.1:8000`
+- DeepEar 独立入口默认访问 `http://127.0.0.1:8765`
+- DSA 站内侧边栏会出现 `DeepEar` 页面，登录 DSA 后可桥接到统一的 DeepEar 服务账号
+
+服务器部署时保持同一套流程：`git pull` 后执行 `git submodule update --init --recursive`，再准备 `.env` 与 `docker/deepear.env`，最后运行同一条 `docker compose` 命令即可。
+
 ## 📱 推送效果
 
 ### 决策仪表盘

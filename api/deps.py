@@ -10,14 +10,17 @@ API 依赖注入模块
 3. 提供服务层依赖
 """
 
-from typing import Generator
+from typing import Generator, TYPE_CHECKING
 
 from fastapi import Request
 from sqlalchemy.orm import Session
 
 from src.storage import DatabaseManager
 from src.config import get_config, Config
-from src.services.system_config_service import SystemConfigService
+from src.services.deepear_auth_service import DeepEarAuthService
+
+if TYPE_CHECKING:
+    from src.services.system_config_service import SystemConfigService
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -62,10 +65,18 @@ def get_database_manager() -> DatabaseManager:
     return DatabaseManager.get_instance()
 
 
-def get_system_config_service(request: Request) -> SystemConfigService:
+def get_system_config_service(request: Request) -> "SystemConfigService":
     """Get app-lifecycle shared SystemConfigService instance."""
+    from src.services.system_config_service import SystemConfigService
+
     service = getattr(request.app.state, "system_config_service", None)
     if service is None:
         service = SystemConfigService()
         request.app.state.system_config_service = service
     return service
+
+
+def get_deepear_auth_service() -> DeepEarAuthService:
+    """Get DeepEar bridge auth service."""
+
+    return DeepEarAuthService()

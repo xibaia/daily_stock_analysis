@@ -37,9 +37,16 @@ sudo systemctl enable docker
 git clone <your-repo-url> /opt/stock-analyzer
 cd /opt/stock-analyzer
 
+# 初始化 DeepEar 子模块
+git submodule update --init --recursive
+
 # 复制并编辑配置文件
 cp .env.example .env
 vim .env  # 填入真实的 API Key 等配置
+
+# DeepEar 独立配置（如需启用站内 DeepEar 集成）
+cp docker/deepear.env.example docker/deepear.env
+vim docker/deepear.env  # 填入 DeepEar 专用模型/API 配置
 ```
 
 ### 3. 一键启动
@@ -47,6 +54,9 @@ vim .env  # 填入真实的 API Key 等配置
 ```bash
 # 构建并启动（同时包含定时分析和 Web 界面服务）
 docker-compose -f ./docker/docker-compose.yml up -d
+
+# 如需本机/服务器同时启用站内 DeepEar 集成，推荐显式启动 Web + DeepEar
+docker-compose -f ./docker/docker-compose.yml up -d --build server deepear
 
 # 查看日志
 docker-compose -f ./docker/docker-compose.yml logs -f
@@ -56,6 +66,13 @@ docker-compose -f ./docker/docker-compose.yml ps
 ```
 
 启动成功后，在浏览器输入 `http://服务器公网IP:8000` 即可打开 Web 管理界面。如果打不开，记得先在云服务器控制台的「安全组」里放行 8000 端口。
+
+如果启用了 DeepEar 集成：
+
+- DSA Web 继续通过 `http://服务器公网IP:8000` 访问
+- DeepEar 独立服务默认监听 `127.0.0.1:8765`
+- 若需要浏览器直接访问 DeepEar，请放行或反向代理 `DEEPEAR_PORT`
+- DSA 侧边栏中的 `DeepEar` 页面会通过 `/api/v1/deepear/session` 自动桥接登录
 
 > 不知道怎么访问？→ [云服务器 Web 界面访问指南](deploy-webui-cloud.md)
 
@@ -70,6 +87,7 @@ docker-compose -f ./docker/docker-compose.yml restart
 
 # 更新代码后重新部署
 git pull
+git submodule update --init --recursive
 docker-compose -f ./docker/docker-compose.yml build --no-cache
 docker-compose -f ./docker/docker-compose.yml up -d
 
@@ -78,6 +96,42 @@ docker-compose -f ./docker/docker-compose.yml exec -u dsa stock-analyzer bash
 
 # 手动执行一次分析
 docker-compose -f ./docker/docker-compose.yml exec -u dsa stock-analyzer python main.py --no-notify
+```
+
+### 4.1 DeepEar 集成专用配置
+
+启用站内 DeepEar 入口时，DSA 主服务至少需要以下变量：
+
+```bash
+DEEPEAR_ENABLED=true
+DEEPEAR_INTERNAL_URL=http://deepear:8765
+DEEPEAR_PUBLIC_URL=http://127.0.0.1:8765
+DEEPEAR_PORT=8765
+DEEPEAR_SERVICE_USERNAME=deepear-bot
+DEEPEAR_SERVICE_PASSWORD=change-this-password
+DEEPEAR_INVITATION_CODE=DEEP-EAR-ADMIN
+```
+
+DeepEar 自己的 `docker/deepear.env` 则负责填写模型与 API Key，例如：
+
+```bash
+LLM_PROVIDER=openrouter
+REASONING_MODEL_PROVIDER=openrouter
+TOOL_MODEL_PROVIDER=openrouter
+REASONING_MODEL_ID=openai/gpt-4o-mini
+TOOL_MODEL_ID=openai/gpt-4o-mini
+OPENROUTER_API_KEY=...
+VITE_ALLOWED_PARENT_ORIGINS=http://127.0.0.1:8000
+```
+
+推荐流程是先在本机完成联调，再把代码推到服务器，服务器只执行：
+
+```bash
+git pull
+git submodule update --init --recursive
+cp .env.example .env
+cp docker/deepear.env.example docker/deepear.env
+docker-compose -f ./docker/docker-compose.yml up -d --build server deepear
 ```
 
 ### 5. 数据持久化
