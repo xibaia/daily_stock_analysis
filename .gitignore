@@ -79,6 +79,13 @@ verify_*.py
 .claude/*
 !.claude/skills/
 !.claude/skills/**
+.claude/skills/tushare/
+
+# IDE / local tools
+.trae/
+
+# Local docs
+docs/fish-shell-venv.md
 
 # ignore static files
 static/
