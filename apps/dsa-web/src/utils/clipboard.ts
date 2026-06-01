@@ -14,11 +14,22 @@ export async function copyToClipboard(text: string): Promise<boolean> {
       await navigator.clipboard.writeText(text);
       return true;
     } catch {
-      // 降级到 execCommand
+      // 如果 Clipboard API 失败（权限被拒等），继续走降级方案
     }
   }
 
-  // 降级方案：使用隐藏的 textarea + execCommand
+  // 降级方案：execCommand 必须在同步上下文中执行，
+  // 因此不能与 await 混在同一条执行路径中
+  return syncCopyToClipboard(text);
+}
+
+/**
+ * 同步降级复制方案。
+ *
+ * 浏览器要求 execCommand('copy') 必须在用户交互（如 click）的
+ * 同步执行路径中调用，不能包装在 async 函数里。
+ */
+function syncCopyToClipboard(text: string): boolean {
   const textarea = document.createElement('textarea');
   textarea.value = text;
   textarea.style.position = 'fixed';
@@ -28,14 +39,14 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 
   document.body.appendChild(textarea);
   textarea.focus();
-  textarea.select();
+  textarea.setSelectionRange(0, text.length);
 
+  let success = false;
   try {
-    const success = document.execCommand('copy');
-    document.body.removeChild(textarea);
-    return success;
+    success = document.execCommand('copy');
   } catch {
-    document.body.removeChild(textarea);
-    return false;
+    success = false;
   }
+  document.body.removeChild(textarea);
+  return success;
 }
