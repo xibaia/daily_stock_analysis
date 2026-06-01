@@ -10,6 +10,7 @@ import type {
   RunDiagnosticSummary,
 } from '../../types/analysis';
 import { normalizeReportLanguage } from '../../utils/reportLanguage';
+import { copyToClipboard } from '../../utils/clipboard';
 import { Badge, Button, Card, StatusDot } from '../common';
 
 interface ReportDiagnosticsProps {
@@ -245,12 +246,12 @@ export const ReportDiagnostics: React.FC<ReportDiagnosticsProps> = ({
   );
 
   const copyDiagnostics = async () => {
-    if (!hasCopyText || !navigator.clipboard?.writeText) {
+    if (!hasCopyText) {
       return;
     }
 
-    try {
-      await navigator.clipboard.writeText(visibleSummary.copyText);
+    const success = await copyToClipboard(visibleSummary.copyText);
+    if (success) {
       setCopied(true);
       if (resetCopiedTimerRef.current !== null) {
         window.clearTimeout(resetCopiedTimerRef.current);
@@ -259,8 +260,8 @@ export const ReportDiagnostics: React.FC<ReportDiagnosticsProps> = ({
         setCopied(false);
         resetCopiedTimerRef.current = null;
       }, 2000);
-    } catch (err) {
-      console.error('Copy diagnostics failed:', err);
+    } else {
+      console.error('Copy diagnostics failed');
     }
   };
 

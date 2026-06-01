@@ -11,6 +11,12 @@ vi.mock('../../../api/history', () => ({
   },
 }));
 
+vi.mock('../../../utils/clipboard', () => ({
+  copyToClipboard: vi.fn().mockResolvedValue(true),
+}));
+
+import { copyToClipboard } from '../../../utils/clipboard';
+
 const diagnosticSummary: RunDiagnosticSummary = {
   traceId: 'trace-1234567890abcdef',
   taskId: 'task-1',
@@ -44,12 +50,6 @@ const diagnosticSummary: RunDiagnosticSummary = {
 describe('ReportDiagnostics', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: {
-        writeText: vi.fn().mockResolvedValue(undefined),
-      },
-    });
   });
 
   it('loads historical diagnostics in a collapsed panel and copies sanitized text', async () => {
@@ -72,7 +72,7 @@ describe('ReportDiagnostics', () => {
     fireEvent.click(screen.getByRole('button', { name: '复制排障信息' }));
 
     await waitFor(() => {
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(diagnosticSummary.copyText);
+      expect(copyToClipboard).toHaveBeenCalledWith(diagnosticSummary.copyText);
     });
     await waitFor(() => {
       expect(screen.getByRole('button', { name: '已复制' })).toBeInTheDocument();

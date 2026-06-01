@@ -16,6 +16,7 @@ import { TaskPanel } from '../components/tasks';
 import { useDashboardLifecycle, useHomeDashboardState } from '../hooks';
 import type { SetupStatusResponse } from '../types/systemConfig';
 import { getReportText, normalizeReportLanguage } from '../utils/reportLanguage';
+import { copyToClipboard } from '../utils/clipboard';
 
 type MarketReviewNotice = {
   variant: 'success' | 'warning' | 'danger';
@@ -504,20 +505,18 @@ const HomePage: React.FC = () => {
     }
   }, [notify, pollMarketReviewStatus, scrollMarketReviewFeedbackIntoView]);
 
-  const handleCopyMarketReviewReport = useCallback(() => {
+  const handleCopyMarketReviewReport = useCallback(async () => {
     if (!marketReviewReport) {
       return;
     }
 
-    void navigator.clipboard.writeText(marketReviewReport).then(
-      () => {
-        setMarketReviewReportCopied(true);
-        setTimeout(() => setMarketReviewReportCopied(false), 2000);
-      },
-      (err) => {
-        console.error('复制失败:', err);
-      },
-    );
+    const success = await copyToClipboard(marketReviewReport);
+    if (success) {
+      setMarketReviewReportCopied(true);
+      setTimeout(() => setMarketReviewReportCopied(false), 2000);
+    } else {
+      console.error('复制失败');
+    }
   }, [marketReviewReport]);
 
   const handleDeleteSelectedHistory = useCallback(() => {

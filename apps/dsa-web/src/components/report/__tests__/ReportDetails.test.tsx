@@ -2,28 +2,20 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReportDetails } from '../ReportDetails';
 
-describe('ReportDetails', () => {
-  const writeTextMock = vi.fn().mockResolvedValue(undefined);
-  let originalClipboard: Navigator['clipboard'] | undefined;
+vi.mock('../../../utils/clipboard', () => ({
+  copyToClipboard: vi.fn().mockResolvedValue(true),
+}));
 
+import { copyToClipboard } from '../../../utils/clipboard';
+
+describe('ReportDetails', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    writeTextMock.mockClear();
-    originalClipboard = navigator.clipboard;
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: {
-        writeText: writeTextMock,
-      },
-    });
+    vi.mocked(copyToClipboard).mockClear();
   });
 
   afterEach(() => {
     vi.runOnlyPendingTimers();
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: originalClipboard,
-    });
     vi.useRealTimers();
   });
 
@@ -50,7 +42,7 @@ describe('ReportDetails', () => {
       await Promise.resolve();
     });
 
-    expect(writeTextMock).toHaveBeenNthCalledWith(1, JSON.stringify(details.rawResult, null, 2));
+    expect(copyToClipboard).toHaveBeenNthCalledWith(1, JSON.stringify(details.rawResult, null, 2));
     expect(screen.getByRole('button', { name: '已复制' })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: '复制' })).toHaveLength(1);
 
@@ -59,7 +51,7 @@ describe('ReportDetails', () => {
       await Promise.resolve();
     });
 
-    expect(writeTextMock).toHaveBeenNthCalledWith(2, JSON.stringify(details.contextSnapshot, null, 2));
+    expect(copyToClipboard).toHaveBeenNthCalledWith(2, JSON.stringify(details.contextSnapshot, null, 2));
     expect(screen.getAllByRole('button', { name: '已复制' })).toHaveLength(2);
 
     act(() => {

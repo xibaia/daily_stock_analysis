@@ -25,6 +25,7 @@ import {
 } from '../utils/chatFollowUp';
 import { isNearBottom } from '../utils/chatScroll';
 import { getReportText } from '../utils/reportLanguage';
+import { copyToClipboard } from '../utils/clipboard';
 
 // Quick question examples shown on empty state
 const QUICK_QUESTIONS = [
@@ -430,24 +431,24 @@ const ChatPage: React.FC = () => {
   };
 
   const copyMessageToClipboard = async (msgId: string, content: string) => {
-    try {
-      await navigator.clipboard.writeText(content);
-      setCopiedMessages((prev) => new Set(prev).add(msgId));
-      const existingTimer = copyResetTimerRef.current[msgId];
-      if (existingTimer !== undefined) {
-        window.clearTimeout(existingTimer);
-      }
-      copyResetTimerRef.current[msgId] = window.setTimeout(() => {
-        setCopiedMessages((prev) => {
-          const next = new Set(prev);
-          next.delete(msgId);
-          return next;
-        });
-        delete copyResetTimerRef.current[msgId];
-      }, 2000);
-    } catch (err) {
-      console.error('Copy failed:', err);
+    const success = await copyToClipboard(content);
+    if (!success) {
+      console.error('Copy failed');
+      return;
     }
+    setCopiedMessages((prev) => new Set(prev).add(msgId));
+    const existingTimer = copyResetTimerRef.current[msgId];
+    if (existingTimer !== undefined) {
+      window.clearTimeout(existingTimer);
+    }
+    copyResetTimerRef.current[msgId] = window.setTimeout(() => {
+      setCopiedMessages((prev) => {
+        const next = new Set(prev);
+        next.delete(msgId);
+        return next;
+      });
+      delete copyResetTimerRef.current[msgId];
+    }, 2000);
   };
 
   const downloadMessageAsMarkdown = useCallback((msg: Message) => {
