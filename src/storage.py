@@ -1019,7 +1019,20 @@ class DatabaseManager(metaclass=_DatabaseManagerMeta):
             raise
         finally:
             session.close()
-    
+
+    def get_distinct_codes(self) -> List[str]:
+        """
+        返回 stock_daily 中所有不重复的股票代码（按字母序）。
+
+        Returns:
+            股票代码字符串列表
+        """
+        with self.get_session() as session:
+            results = session.execute(
+                select(StockDaily.code).distinct().order_by(StockDaily.code)
+            ).scalars().all()
+            return [str(r) for r in results]
+
     def has_today_data(self, code: str, target_date: Optional[date] = None) -> bool:
         """
         检查是否已有指定日期的数据

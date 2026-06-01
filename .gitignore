@@ -87,6 +87,9 @@ verify_*.py
 # Local docs
 docs/fish-shell-venv.md
 
+# Local code index
+.codegraph/
+
 # ignore static files
 static/
 /apps/dsa-desktop/dist/
