@@ -26,6 +26,7 @@ from enum import Enum
 
 from src.config import Config, get_config
 from src.enums import ReportType
+from src.market_phase_summary import format_public_phase_pack_excerpt
 from src.notification_routing import (
     get_notification_route_config,
     split_notification_route_channels,
@@ -338,6 +339,14 @@ class NotificationService(
             if model:
                 models.append(model)
         return list(dict.fromkeys(models))
+
+    def _public_phase_pack_excerpt(self, result: AnalysisResult, report_language: str) -> str:
+        return format_public_phase_pack_excerpt(
+            getattr(result, "market_phase_summary", None),
+            getattr(result, "analysis_context_pack_overview", None),
+            source=getattr(result, "analysis_visibility_source", None) or "evaluator_snapshot",
+            report_language=report_language,
+        )
 
     def _should_show_llm_model(self) -> bool:
         return bool(getattr(self._config, "report_show_llm_model", self._report_show_llm_model))
@@ -815,6 +824,9 @@ class NotificationService(
                     f"{labels['score_label']} {r.sentiment_score} | "
                     f"{localize_trend_prediction(r.trend_prediction, report_language)}"
                 )
+                excerpt = self._public_phase_pack_excerpt(r, report_language)
+                if excerpt:
+                    report_lines.append(excerpt)
         else:
             report_lines.extend([f"## 📈 {labels['report_title']}", ""])
             # 逐个股票的详细分析
@@ -831,6 +843,9 @@ class NotificationService(
                     f"**Confidence：{confidence_stars}**",
                     "",
                 ])
+                excerpt = self._public_phase_pack_excerpt(result, report_language)
+                if excerpt:
+                    report_lines.extend([excerpt, ""])
 
                 self._append_market_snapshot(report_lines, result)
                 
@@ -1065,6 +1080,9 @@ class NotificationService(
                     f"{labels['score_label']} {r.sentiment_score} | "
                     f"{localize_trend_prediction(r.trend_prediction, report_language)}"
                 )
+                excerpt = self._public_phase_pack_excerpt(r, report_language)
+                if excerpt:
+                    report_lines.append(excerpt)
             report_lines.extend([
                 "",
                 "---",
@@ -1604,6 +1622,9 @@ class NotificationService(
                 f"{localize_operation_advice(r.operation_advice, report_language)} | "
                 f"{labels['score_label']} {r.sentiment_score} | {one}"
             )
+            excerpt = self._public_phase_pack_excerpt(r, report_language)
+            if excerpt:
+                lines.append(excerpt)
         lines.append("")
         lines.append(f"*{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*")
         models = self._collect_models_used(results)
@@ -1641,6 +1662,10 @@ class NotificationService(
             f"> {report_date} | {labels['score_label']}: **{result.sentiment_score}** | {localize_trend_prediction(result.trend_prediction, report_language)}",
             "",
         ]
+
+        excerpt = self._public_phase_pack_excerpt(result, report_language)
+        if excerpt:
+            lines.extend([excerpt, ""])
 
         self._append_market_snapshot(lines, result)
         
