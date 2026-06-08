@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { copyToClipboard } from '../../utils/clipboard';
+import { useUiLanguage } from '../../contexts/UiLanguageContext';
 
 interface JsonViewerProps {
   data: Record<string, unknown> | unknown[] | null | undefined;
@@ -17,10 +18,11 @@ export const JsonViewer: React.FC<JsonViewerProps> = ({
   className = '',
 }) => {
   const [copied, setCopied] = useState(false);
+  const { t } = useUiLanguage();
 
   if (!data) {
     return (
-      <div className="text-gray-500 italic py-4 text-center">暂无数据</div>
+      <div className="text-gray-500 italic py-4 text-center">{t('common.noData')}</div>
     );
   }
 
@@ -77,7 +79,7 @@ export const JsonViewer: React.FC<JsonViewerProps> = ({
           bg-slate-700 hover:bg-slate-600 text-gray-300
           transition-colors z-10"
       >
-        {copied ? '已复制!' : '复制'}
+        {copied ? t('common.copied') : t('common.copy')}
       </button>
 
       {/* JSON 内容 */}
