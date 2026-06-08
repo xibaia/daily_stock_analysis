@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,50 @@ def _safe_float(value: Any) -> Optional[float]:
         return None
     try:
         return float(s)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_money_amount(value: Any) -> Optional[float]:
+    """Parse Chinese market amount strings into yuan."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    text = str(value).strip().replace(",", "")
+    if not text or text in ("-", "--", "nan", "None"):
+        return None
+
+    sign = -1.0 if text.startswith("-") else 1.0
+    normalized = text.lstrip("+-").strip()
+    multiplier = 1.0
+    if normalized.endswith("亿元"):
+        multiplier = 100000000.0
+        normalized = normalized[:-2]
+    elif normalized.endswith("万元"):
+        multiplier = 10000.0
+        normalized = normalized[:-2]
+    elif normalized.endswith("千元"):
+        multiplier = 1000.0
+        normalized = normalized[:-2]
+    elif normalized.endswith("亿"):
+        multiplier = 100000000.0
+        normalized = normalized[:-1]
+    elif normalized.endswith("万"):
+        multiplier = 10000.0
+        normalized = normalized[:-1]
+    elif normalized.endswith("千"):
+        multiplier = 1000.0
+        normalized = normalized[:-1]
+    elif normalized.endswith("元"):
+        normalized = normalized[:-1]
+
+    try:
+        return sign * float(normalized) * multiplier
     except (TypeError, ValueError):
         return None
 
@@ -261,6 +307,112 @@ def _extract_latest_row(df: pd.DataFrame, stock_code: str) -> Optional[pd.Series
     return df.iloc[0]
 
 
+def _a_stock_market_param(stock_code: str) -> Optional[str]:
+    code = _normalize_code(stock_code)
+    if code.startswith(("600", "601", "603", "605", "688")):
+        return "sh"
+    if code.startswith(("000", "001", "002", "003", "300", "301")):
+        return "sz"
+    if code.startswith(("4", "8")):
+        return "bj"
+    return None
+
+
+def _extract_stock_flow_from_detail_df(df: pd.DataFrame) -> Dict[str, Optional[float]]:
+    if df is None or df.empty:
+        return {}
+    flow_col = next(
+        (
+            c for c in df.columns
+            if "主力" in str(c) and "净流入" in str(c) and "净额" in str(c)
+        ),
+        None,
+    )
+    if flow_col is None:
+        flow_col = next((c for c in df.columns if any(k in str(c) for k in ("主力净流入", "资金流入净额", "净额"))), None)
+    if flow_col is None:
+        return {}
+
+    values = df[flow_col].map(_safe_money_amount).dropna()
+    if values.empty:
+        return {}
+
+    return {
+        "main_net_inflow": float(values.iloc[-1]),
+        "inflow_5d": float(values.tail(5).sum()) if len(values) >= 1 else None,
+        "inflow_10d": float(values.tail(10).sum()) if len(values) >= 1 else None,
+    }
+
+
+def _fetch_eastmoney_stock_fund_flow(
+    stock_code: str,
+    market: str,
+    timeout_seconds: float = 2.5,
+    max_attempts: int = 3,
+) -> pd.DataFrame:
+    market_map = {"sh": 1, "sz": 0, "bj": 0}
+    if market not in market_map:
+        return pd.DataFrame()
+
+    url = "https://push2his.eastmoney.com/api/qt/stock/fflow/daykline/get"
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36"
+        ),
+    }
+    params = {
+        "lmt": "0",
+        "klt": "101",
+        "secid": f"{market_map[market]}.{_normalize_code(stock_code)}",
+        "fields1": "f1,f2,f3,f7",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63,f64,f65",
+        "ut": "b2884a393a59ad64002292a3e90d46a5",
+        "_": int(time.time() * 1000),
+    }
+    last_error: Optional[Exception] = None
+    for attempt in range(max(1, max_attempts)):
+        try:
+            response = requests.get(url, params=params, headers=headers, timeout=timeout_seconds)
+            response.raise_for_status()
+            break
+        except requests.RequestException as exc:
+            last_error = exc
+            if attempt >= max_attempts - 1:
+                raise
+            time.sleep(0.2)
+    else:
+        if last_error is not None:
+            raise last_error
+        return pd.DataFrame()
+
+    data = response.json()
+    klines = ((data or {}).get("data") or {}).get("klines") or []
+    if not klines:
+        return pd.DataFrame()
+
+    temp_df = pd.DataFrame([str(item).split(",") for item in klines])
+    if temp_df.shape[1] < 13:
+        return pd.DataFrame()
+    temp_df = temp_df.iloc[:, :13]
+    temp_df.columns = [
+        "日期",
+        "主力净流入-净额",
+        "小单净流入-净额",
+        "中单净流入-净额",
+        "大单净流入-净额",
+        "超大单净流入-净额",
+        "主力净流入-净占比",
+        "小单净流入-净占比",
+        "中单净流入-净占比",
+        "大单净流入-净占比",
+        "超大单净流入-净占比",
+        "收盘价",
+        "涨跌幅",
+    ]
+    return temp_df
+
+
 class AkshareFundamentalAdapter:
     """AkShare adapter for fundamentals, capital flow and dragon-tiger signals."""
 
@@ -448,48 +600,48 @@ class AkshareFundamentalAdapter:
             "errors": [],
         }
 
-        stock_df, stock_source, stock_errors = self._call_df_candidates([
-            ("stock_individual_fund_flow", {"stock": stock_code}),
-            ("stock_individual_fund_flow", {}),
-            ("stock_main_fund_flow", {"symbol": stock_code}),
-            ("stock_main_fund_flow", {}),
-        ])
-        result["errors"].extend(stock_errors)
-        if stock_df is not None:
+        market_param = _a_stock_market_param(stock_code)
+        if market_param:
+            stock_source = "eastmoney_stock_fflow"
+            try:
+                stock_df = _fetch_eastmoney_stock_fund_flow(stock_code, market_param)
+            except Exception as exc:
+                stock_df = None
+                result["errors"].append(f"{stock_source}:{type(exc).__name__}")
+            if stock_df is not None:
+                result["source_chain"].append(f"capital_stock:{stock_source}")
+        else:
+            stock_df = None
+
+        if stock_df is not None and not stock_df.empty:
+            detail_flow = _extract_stock_flow_from_detail_df(stock_df)
+            if detail_flow:
+                result["stock_flow"] = detail_flow
+
+        if stock_df is not None and not result["stock_flow"]:
             row = _extract_latest_row(stock_df, stock_code)
             if row is not None:
-                net_inflow = _safe_float(_pick_by_keywords(row, ["主力净流入", "净流入", "净额"]))
-                inflow_5d = _safe_float(_pick_by_keywords(row, ["5日", "五日"]))
-                inflow_10d = _safe_float(_pick_by_keywords(row, ["10日", "十日"]))
+                net_inflow = _safe_money_amount(_pick_by_keywords(row, ["主力净流入", "资金流入净额", "净流入", "净额"]))
+                inflow_5d = _safe_money_amount(_pick_by_keywords(row, ["5日", "五日"]))
+                inflow_10d = _safe_money_amount(_pick_by_keywords(row, ["10日", "十日"]))
                 result["stock_flow"] = {
                     "main_net_inflow": net_inflow,
                     "inflow_5d": inflow_5d,
                     "inflow_10d": inflow_10d,
                 }
-                result["source_chain"].append(f"capital_stock:{stock_source}")
-
-        sector_df, sector_source, sector_errors = self._call_df_candidates([
-            ("stock_sector_fund_flow_rank", {}),
-            ("stock_sector_fund_flow_summary", {}),
-        ])
-        result["errors"].extend(sector_errors)
-        if sector_df is not None:
-            name_col = next((c for c in sector_df.columns if any(k in str(c) for k in ("板块", "行业", "名称", "name"))), None)
-            flow_col = next((c for c in sector_df.columns if any(k in str(c) for k in ("净流入", "主力", "flow", "净额"))), None)
-            if name_col and flow_col:
-                work_df = sector_df[[name_col, flow_col]].copy()
-                work_df[flow_col] = pd.to_numeric(work_df[flow_col], errors="coerce")
-                work_df = work_df.dropna(subset=[flow_col])
-                top_df = work_df.nlargest(top_n, flow_col)
-                bottom_df = work_df.nsmallest(top_n, flow_col)
-                result["sector_rankings"] = {
-                    "top": [{"name": _safe_str(r[name_col]), "net_inflow": float(r[flow_col])} for _, r in top_df.iterrows()],
-                    "bottom": [{"name": _safe_str(r[name_col]), "net_inflow": float(r[flow_col])} for _, r in bottom_df.iterrows()],
+                result["stock_flow"] = {
+                    key: value
+                    for key, value in result["stock_flow"].items()
+                    if value is not None
                 }
-                result["source_chain"].append(f"capital_sector:{sector_source}")
 
-        has_content = bool(result["stock_flow"] or result["sector_rankings"]["top"] or result["sector_rankings"]["bottom"])
-        result["status"] = "partial" if has_content else "not_supported"
+        has_stock_flow = any(v is not None for v in result["stock_flow"].values())
+        if has_stock_flow:
+            result["status"] = "partial"
+        elif result["errors"]:
+            result["status"] = "failed"
+        else:
+            result["status"] = "not_supported"
         return result
 
     def get_dragon_tiger_flag(self, stock_code: str, lookback_days: int = 20) -> Dict[str, Any]:

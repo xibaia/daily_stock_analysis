@@ -2967,6 +2967,8 @@ class DataFetcherManager:
             capital_flow_status = "ok"
         elif adapter_status == "not_supported":
             capital_flow_status = "not_supported"
+        elif adapter_status == "failed":
+            capital_flow_status = "failed"
         else:
             capital_flow_status = "partial"
 

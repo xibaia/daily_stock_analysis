@@ -12,10 +12,12 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
+import pandas as pd
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from data_provider.base import DataFetcherManager
+from data_provider.fundamental_adapter import AkshareFundamentalAdapter
 
 
 class _DummyFetcher:
@@ -515,6 +517,81 @@ class TestFundamentalContext(unittest.TestCase):
                 ):
             ctx = manager.get_capital_flow_context("600519", budget_seconds=0.5)
         self.assertEqual(ctx["status"], "not_supported")
+
+    def test_capital_flow_failed_status(self) -> None:
+        manager = DataFetcherManager(fetchers=[])
+        cfg = SimpleNamespace(
+            enable_fundamental_pipeline=True,
+            fundamental_cache_ttl_seconds=120,
+            fundamental_stage_timeout_seconds=1.5,
+            fundamental_fetch_timeout_seconds=0.8,
+            fundamental_retry_max=1,
+        )
+        with patch("src.config.get_config", return_value=cfg), \
+                patch(
+                    "data_provider.fundamental_adapter.AkshareFundamentalAdapter.get_capital_flow",
+                    return_value={
+                        "status": "failed",
+                        "stock_flow": {},
+                        "sector_rankings": {"top": [], "bottom": []},
+                        "source_chain": [],
+                        "errors": ["stock_fund_flow_individual:ConnectionError"],
+                    },
+                ):
+            ctx = manager.get_capital_flow_context("600519", budget_seconds=0.5)
+        self.assertEqual(ctx["status"], "failed")
+
+    def test_akshare_capital_flow_uses_single_stock_fund_flow_detail(self) -> None:
+        adapter = AkshareFundamentalAdapter()
+
+        def fetch_eastmoney_stock_fund_flow(stock: str, market: str):
+            self.assertEqual(stock, "300925")
+            self.assertEqual(market, "sz")
+            return pd.DataFrame([
+                {"日期": "2026-05-26", "主力净流入-净额": "100万"},
+                {"日期": "2026-05-27", "主力净流入-净额": "200万元"},
+                {"日期": "2026-05-28", "主力净流入-净额": "300万"},
+                {"日期": "2026-05-29", "主力净流入-净额": "400万"},
+                {"日期": "2026-06-01", "主力净流入-净额": "500万"},
+                {"日期": "2026-06-02", "主力净流入-净额": "600万"},
+                {"日期": "2026-06-03", "主力净流入-净额": "700万"},
+                {"日期": "2026-06-04", "主力净流入-净额": "800万"},
+                {"日期": "2026-06-05", "主力净流入-净额": "900万"},
+                {"日期": "2026-06-08", "主力净流入-净额": "1000万"},
+            ])
+
+        with patch(
+            "data_provider.fundamental_adapter._fetch_eastmoney_stock_fund_flow",
+            side_effect=fetch_eastmoney_stock_fund_flow,
+        ):
+            payload = adapter.get_capital_flow("300925")
+
+        self.assertEqual(payload["status"], "partial")
+        self.assertEqual(payload["stock_flow"]["main_net_inflow"], 10000000.0)
+        self.assertEqual(payload["stock_flow"]["inflow_5d"], 40000000.0)
+        self.assertEqual(payload["stock_flow"]["inflow_10d"], 55000000.0)
+        self.assertIn("capital_stock:eastmoney_stock_fflow", payload["source_chain"])
+
+    def test_akshare_capital_flow_skips_slow_market_wide_fallback(self) -> None:
+        adapter = AkshareFundamentalAdapter()
+
+        def fetch_eastmoney_stock_fund_flow(stock: str, market: str):
+            raise ConnectionError("upstream closed connection")
+
+        def stock_individual_fund_flow(stock: str = ""):
+            raise AssertionError("market-wide fund flow fallback should not run")
+
+        fake_akshare = SimpleNamespace(stock_individual_fund_flow=stock_individual_fund_flow)
+        with patch.dict(sys.modules, {"akshare": fake_akshare}), \
+                patch(
+                    "data_provider.fundamental_adapter._fetch_eastmoney_stock_fund_flow",
+                    side_effect=fetch_eastmoney_stock_fund_flow,
+                ):
+            payload = adapter.get_capital_flow("603602")
+
+        self.assertEqual(payload["status"], "failed")
+        self.assertEqual(payload["stock_flow"], {})
+        self.assertIn("eastmoney_stock_fflow:ConnectionError", payload["errors"])
 
     def test_get_belong_boards_from_capability_probe(self) -> None:
         fetcher = _DummyBoardFetcher(

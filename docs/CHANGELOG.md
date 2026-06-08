@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- [修复] 资金流分析修正 AkShare 单股资金流接口参数并解析万/亿金额单位，避免个股主力资金长期误判为不可用。
+- [修复] 资金流分析移除 AkShare 全市场资金流排行慢兜底，避免单股资金流瞬时失败时拖到阶段超时。
+- [修复] 资金流分析改用带请求超时的东方财富单股资金流直连接口，避免 AkShare 包装调用卡住导致主力资金阶段超时。
 - [修复] Web 个股栏和历史卡片在窄布局下不再让市场阶段标签遮挡股票名称。
 - [修复] 问股自由文本追问不再将 TTM、PE、YOY 等金融缩写误识别为新股票代码。
 - [修复] GitHub Actions 每日分析工作流读取 SearXNG 自建实例地址时支持 Variables 优先、Secrets 回退，修复仅配置 Variables 时 URL 不生效的问题。
