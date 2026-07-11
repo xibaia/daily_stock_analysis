@@ -332,6 +332,8 @@ docker compose -f docker/docker-compose.yml run --rm analyzer \
 
 单个股票失败会在最终摘要中列出并使命令返回非零，但不会回滚其他股票已经完成的幂等 UPSERT。需要数据回滚时，先停止所有应用进程，再用命令输出的 `.backup.<时间>` 文件替换原 SQLite 数据库；不要在服务运行中直接覆盖数据库文件。
 
+如果第三方库还需要额外的运行时缓存目录，可在 `.env` 中通过冒号分隔配置 `DSA_RUNTIME_CACHE_DIRS`。容器入口仅接受 `/app/*`、`/home/dsa/*`、`/tmp/*` 下的路径并在启动时修复为 `dsa` 可写；其他根路径会被拒绝。efinance 的包内数据目录由入口动态发现，无需写死 Python 安装路径。
+
 ---
 
 ## 可选：Nginx 反向代理（绑定域名 / 80 端口）

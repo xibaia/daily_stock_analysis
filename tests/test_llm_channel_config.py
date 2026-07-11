@@ -1116,6 +1116,79 @@ class LLMChannelConfigTestCase(unittest.TestCase):
         self.assertTrue(directive.omit_temperature)
         self.assertNotIn("temperature", call_kwargs)
 
+    def test_anthropic_route_promotes_explicit_thinking_to_top_level(self) -> None:
+        thinking = {"type": "enabled", "budget_tokens": 1024}
+        model_list = [
+            {
+                "model_name": "coding_route",
+                "litellm_params": {
+                    "model": "anthropic/vendor-coding-model",
+                },
+                "model_info": {"dsa_thinking": thinking},
+            }
+        ]
+
+        call_kwargs = apply_litellm_generation_params(
+            {"model": "coding_route", "messages": []},
+            "coding_route",
+            0.2,
+            model_list=model_list,
+        )
+
+        self.assertEqual(call_kwargs["thinking"], thinking)
+        self.assertIn("thinking", call_kwargs["allowed_openai_params"])
+        self.assertNotIn("extra_body", call_kwargs)
+
+    def test_openai_route_keeps_explicit_thinking_in_extra_body(self) -> None:
+        thinking = {"type": "enabled"}
+
+        call_kwargs = apply_litellm_generation_params(
+            {
+                "model": "openai/vendor-model",
+                "messages": [],
+                "extra_body": {"thinking": thinking},
+            },
+            "openai/vendor-model",
+            0.2,
+        )
+
+        self.assertNotIn("thinking", call_kwargs)
+        self.assertEqual(call_kwargs["extra_body"]["thinking"], thinking)
+
+    def test_model_name_does_not_enable_thinking_without_explicit_config(self) -> None:
+        call_kwargs = apply_litellm_generation_params(
+            {"model": "anthropic/kimi-for-coding", "messages": []},
+            "anthropic/kimi-for-coding",
+            0.2,
+        )
+
+        self.assertNotIn("thinking", call_kwargs)
+        self.assertNotIn("allowed_openai_params", call_kwargs)
+
+    def test_mixed_provider_alias_does_not_leak_anthropic_thinking(self) -> None:
+        model_list = [
+            {
+                "model_name": "mixed_route",
+                "litellm_params": {"model": "anthropic/vendor-model"},
+                "model_info": {"dsa_thinking": {"type": "enabled"}},
+            },
+            {
+                "model_name": "mixed_route",
+                "litellm_params": {"model": "openai/vendor-model"},
+                "model_info": {"dsa_thinking": {"type": "enabled"}},
+            },
+        ]
+
+        call_kwargs = apply_litellm_generation_params(
+            {"model": "mixed_route", "messages": []},
+            "mixed_route",
+            0.2,
+            model_list=model_list,
+        )
+
+        self.assertNotIn("thinking", call_kwargs)
+        self.assertNotIn("allowed_openai_params", call_kwargs)
+
     @patch("src.config.setup_env")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     def test_local_openai_compatible_channel_defaults_to_openai_protocol(self, _mock_parse_yaml, _mock_setup_env) -> None:

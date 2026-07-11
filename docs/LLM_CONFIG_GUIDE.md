@@ -251,6 +251,7 @@ Hermes 是保留渠道名，只支持本机 loopback `/v1` OpenAI-compatible gen
 
 - 问股 Agent 运行时沿用与普通分析相同的三层优先级：`LITELLM_CONFIG`（LiteLLM YAML）> `LLM_CHANNELS` > legacy provider keys。只要上层配置有效生效，下层配置就不会再参与本次请求。
 - YAML 模式下，Agent 直接复用 LiteLLM `model_list` / `model_name` 路由语义；渠道模式下，优先读取 `AGENT_LITELLM_MODEL`，留空时继承 `LITELLM_MODEL`，再按 `LITELLM_FALLBACK_MODELS` 继续 fallback。
+- 对明确要求 Anthropic 顶层 `thinking` 参数的 YAML route，可在该 deployment 的 `model_info.dsa_thinking` 中配置 payload（示例见 `docs/examples/litellm_config.example.yaml`）。普通分析与 Agent 会统一提升为顶层参数并放入 LiteLLM allowlist；OpenAI-compatible route 保持 `extra_body` 语义。系统不会根据 `kimi` 等模型名自动猜测能力。
 - 如果你没有启用 YAML / Channels，且 `AGENT_LITELLM_MODEL` 也留空，但本地仍保留 legacy 环境变量，问股 Agent 依然会继承旧配置：`GEMINI_API_KEY + GEMINI_MODEL` -> `gemini/<model>`，`OPENAI_API_KEY + OPENAI_MODEL` -> `openai/<model>`，`ANTHROPIC_API_KEY + ANTHROPIC_MODEL` -> `anthropic/<model>`。
 - 该兼容逻辑只增强“失败时保留后端真实错误原因”和“未配置 LLM 时给出更具体诊断”，**不会**静默删除、清空、迁移或改写你现有的 `GEMINI_*` / `OPENAI_*` / `ANTHROPIC_*` / `LITELLM_*` 配置。
 - 如果当前环境没有任何有效 Agent 模型链路，问股页面会继续按失败语义返回，并直接展示后端真实配置诊断；补齐任一有效模型来源后即可恢复，无需额外执行配置迁移脚本。

@@ -201,12 +201,14 @@ def _run_entrypoint_with_fake_tools(
     *,
     gosu_write_exit: int,
     chown_exit: int,
+    runtime_cache_dirs: str = "",
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PATH"] = f"{fakebin}:{env['PATH']}"
     env["FAKE_LOG_DIR"] = str(log_dir)
     env["GOSU_WRITE_EXIT"] = str(gosu_write_exit)
     env["CHOWN_EXIT"] = str(chown_exit)
+    env["DSA_RUNTIME_CACHE_DIRS"] = runtime_cache_dirs
 
     return subprocess.run(
         ["sh", str(REPO_ROOT / "docker" / "entrypoint.sh"), "true"],
@@ -215,6 +217,28 @@ def _run_entrypoint_with_fake_tools(
         text=True,
         env=env,
     )
+
+
+def test_docker_entrypoint_repairs_only_approved_runtime_cache_roots(
+    tmp_path: Path,
+) -> None:
+    fakebin, log_dir = _prepare_fake_entrypoint_tools(
+        tmp_path,
+        'printf "%s/root-owned\\n" "$1"\n',
+    )
+
+    result = _run_entrypoint_with_fake_tools(
+        fakebin,
+        log_dir,
+        gosu_write_exit=1,
+        chown_exit=0,
+        runtime_cache_dirs="/tmp/provider-cache:/etc/unsafe-cache",
+    )
+
+    chown_log = (log_dir / "chown.log").read_text(encoding="utf-8")
+    assert "/tmp/provider-cache" in chown_log
+    assert "/etc/unsafe-cache" not in chown_log
+    assert "refusing runtime cache directory outside approved roots" in result.stderr
 
 
 def test_docker_entrypoint_repairs_nested_mount_ownership(tmp_path: Path) -> None:

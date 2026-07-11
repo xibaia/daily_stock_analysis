@@ -135,6 +135,69 @@ def _extract_thinking_config(payload: Optional[Dict[str, Any]]) -> Any:
     return None
 
 
+def _configured_anthropic_thinking(
+    model: str,
+    model_list: Optional[List[Dict[str, Any]]],
+    request_overrides: Optional[Dict[str, Any]],
+) -> Any:
+    """Return explicitly configured thinking only for Anthropic transports."""
+    model_entries = _resolve_litellm_model_list_entries(model, model_list)
+    request_thinking = _extract_thinking_config(request_overrides)
+    if not model_entries:
+        wire_model = resolve_litellm_wire_model(model, model_list)
+        wire_provider = wire_model.split("/", 1)[0].strip().lower() if "/" in wire_model else ""
+        return request_thinking if wire_provider == "anthropic" else None
+
+    configured_payloads = []
+    for model_entry in model_entries:
+        params = model_entry.get("litellm_params", {}) or {}
+        wire_model = str(params.get("model") or "")
+        configured_provider = str(params.get("custom_llm_provider") or "").strip().lower()
+        wire_provider = wire_model.split("/", 1)[0].strip().lower() if "/" in wire_model else ""
+        if (configured_provider or wire_provider) != "anthropic":
+            return None
+        model_info = model_entry.get("model_info", {}) or {}
+        configured_payloads.append(
+            model_info.get("dsa_thinking") if isinstance(model_info, Mapping) else None
+        )
+
+    if request_thinking is not None:
+        return request_thinking
+    first_payload = configured_payloads[0]
+    if not isinstance(first_payload, Mapping):
+        return None
+    if any(payload != first_payload for payload in configured_payloads[1:]):
+        return None
+    return first_payload
+
+
+def _apply_configured_thinking_transport(
+    call_kwargs: Dict[str, Any],
+    model: str,
+    model_list: Optional[List[Dict[str, Any]]],
+) -> Dict[str, Any]:
+    updated = dict(call_kwargs)
+    thinking = _configured_anthropic_thinking(model, model_list, updated)
+    if not isinstance(thinking, Mapping):
+        return updated
+
+    updated["thinking"] = dict(thinking)
+    allowed_params = list(updated.get("allowed_openai_params") or [])
+    if "thinking" not in allowed_params:
+        allowed_params.append("thinking")
+    updated["allowed_openai_params"] = allowed_params
+
+    extra_body = updated.get("extra_body")
+    if isinstance(extra_body, Mapping) and "thinking" in extra_body:
+        remaining_extra_body = dict(extra_body)
+        remaining_extra_body.pop("thinking", None)
+        if remaining_extra_body:
+            updated["extra_body"] = remaining_extra_body
+        else:
+            updated.pop("extra_body", None)
+    return updated
+
+
 def _parse_thinking_enabled(value: Any) -> Optional[bool]:
     """Parse thinking-mode config into True/False/unknown."""
     if value is None:
@@ -416,7 +479,11 @@ def apply_litellm_generation_params(
     request_overrides: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Return kwargs with model-compatible generation parameters applied."""
-    updated = dict(call_kwargs)
+    updated = _apply_configured_thinking_transport(
+        call_kwargs,
+        model,
+        model_list,
+    )
     effective_overrides = request_overrides if request_overrides is not None else updated
     directive = resolve_litellm_temperature_directive(
         model,

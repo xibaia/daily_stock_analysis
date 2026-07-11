@@ -60,6 +60,34 @@ directory_needs_repair() {
     return 1
 }
 
+EFINANCE_CACHE_DIR="$(python - <<'PY' 2>/dev/null || true
+from pathlib import Path
+
+try:
+    import efinance
+except Exception:
+    raise SystemExit(0)
+print(Path(efinance.__file__).resolve().parent / "data")
+PY
+)"
+if [ -n "$EFINANCE_CACHE_DIR" ]; then
+    WRITABLE_DIRS="$WRITABLE_DIRS $EFINANCE_CACHE_DIR"
+fi
+
+if [ -n "${DSA_RUNTIME_CACHE_DIRS:-}" ]; then
+    runtime_cache_dirs="$(printf '%s' "$DSA_RUNTIME_CACHE_DIRS" | tr ':' ' ')"
+    for runtime_cache_dir in $runtime_cache_dirs; do
+        case "$runtime_cache_dir" in
+            /app/*|/home/dsa/*|/tmp/*)
+                WRITABLE_DIRS="$WRITABLE_DIRS $runtime_cache_dir"
+                ;;
+            *)
+                warn "WARN: refusing runtime cache directory outside approved roots: $runtime_cache_dir"
+                ;;
+        esac
+    done
+fi
+
 if [ "$(id -u)" = "0" ]; then
     for dir in $WRITABLE_DIRS; do
         if ! mkdir -p "$dir"; then

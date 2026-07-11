@@ -68,6 +68,12 @@ model_list:
   #   litellm_params:
   #     model: anthropic/claude-3-5-sonnet-20241022
   #     api_key: "os.environ/ANTHROPIC_API_KEY"
+  #   # 仅对明确要求顶层 thinking 参数的 Anthropic-compatible route 配置；
+  #   # DSA 不会根据模型名自动猜测或启用 thinking。
+  #   model_info:
+  #     dsa_thinking:
+  #       type: enabled
+  #       budget_tokens: 1024
 
   # --- OpenRouter (聚合平台) ---
   # - model_name: openai/meta-llama/llama-3-70b-instruct
