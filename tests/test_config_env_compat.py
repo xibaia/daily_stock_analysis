@@ -16,6 +16,24 @@ class ConfigEnvCompatibilityTestCase(unittest.TestCase):
 
     @patch("src.config.setup_env")
     @patch.object(Config, "_parse_litellm_yaml", return_value=[])
+    def test_wechat_message_type_defaults_and_validation(
+        self, _mock_parse_litellm_yaml, _mock_setup_env
+    ):
+        with patch.dict(os.environ, {"STOCK_LIST": "600519"}, clear=True):
+            default_config = Config._load_from_env()
+        with patch.dict(
+            os.environ,
+            {"STOCK_LIST": "600519", "WECHAT_MSG_TYPE": "html"},
+            clear=True,
+        ):
+            invalid_config = Config._load_from_env()
+
+        self.assertEqual(default_config.wechat_msg_type, "markdown_v2")
+        self.assertEqual(default_config.wechat_max_bytes, 4000)
+        self.assertEqual(invalid_config.wechat_msg_type, "markdown_v2")
+
+    @patch("src.config.setup_env")
+    @patch.object(Config, "_parse_litellm_yaml", return_value=[])
     @patch.object(Config, "_parse_stock_email_groups", return_value=[])
     def test_stock_list_accepts_common_copy_paste_separators(
         self, _mock_parse_stock_email_groups, _mock_parse_litellm_yaml, _mock_setup_env

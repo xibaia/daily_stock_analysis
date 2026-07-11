@@ -39,6 +39,10 @@ class NotificationCapabilityProfileTestCase(unittest.TestCase):
         self.assertEqual(CHANNEL_PROFILES["wechat"].default_mode, "full_report")
         self.assertEqual(CHANNEL_PROFILES["email"].default_mode, "full_html")
 
+    def test_wechat_capability_matches_default_sender_payload(self):
+        self.assertEqual(CHANNEL_PROFILES["wechat"].markdown, "markdown_v2")
+        self.assertEqual(CHANNEL_RENDERER_PRESETS["wechat"].markdown, "markdown_v2")
+
     def test_prepared_message_keeps_legacy_text_fallback(self):
         prepared = PreparedMessage(
             channel="feishu",

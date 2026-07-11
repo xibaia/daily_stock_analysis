@@ -839,6 +839,8 @@ The notification channel matrix and `--check-notify` CLI details are documented 
 2. Copy Webhook URL
 3. Set `WECHAT_WEBHOOK_URL`
 
+The default payload type is `WECHAT_MSG_TYPE=markdown_v2`. Use `markdown` for legacy compatibility or `text` for plain text; `WECHAT_MAX_BYTES` continues to control chunking.
+
 ### Feishu
 
 > ⚠️ **Key distinction**: `FEISHU_WEBHOOK_SECRET` (webhook signing secret) and `FEISHU_APP_SECRET` (Feishu App Secret) are two completely different configuration variables and cannot be used interchangeably.

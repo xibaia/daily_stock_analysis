@@ -242,6 +242,26 @@ class TestWechatSender(unittest.TestCase):
         result = sender.send_to_wechat("hello")
         self.assertTrue(result)
 
+    def test_gen_wechat_payload_defaults_to_markdown_v2(self):
+        sender = WechatSender(_config(wechat_webhook_url="u"))
+
+        payload = sender._gen_wechat_payload("## title\nbody")
+
+        self.assertEqual(payload["msgtype"], "markdown_v2")
+        self.assertEqual(payload["markdown_v2"]["content"], "## title\nbody")
+
+    def test_gen_wechat_payload_supports_explicit_markdown_v2(self):
+        sender = WechatSender(
+            _config(wechat_webhook_url="u", wechat_msg_type="markdown_v2")
+        )
+
+        payload = sender._gen_wechat_payload("content")
+
+        self.assertEqual(payload, {
+            "msgtype": "markdown_v2",
+            "markdown_v2": {"content": "content"},
+        })
+
     def test_gen_wechat_payload_markdown(self):
         cfg = _config(wechat_webhook_url="u", wechat_msg_type="markdown")
         sender = WechatSender(cfg)

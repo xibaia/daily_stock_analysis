@@ -34,7 +34,14 @@ class WechatSender:
         """
         self._wechat_url = config.wechat_webhook_url
         self._wechat_max_bytes = getattr(config, 'wechat_max_bytes', 4000)
-        self._wechat_msg_type = getattr(config, 'wechat_msg_type', 'markdown')
+        configured_type = (
+            getattr(config, 'wechat_msg_type', 'markdown_v2') or 'markdown_v2'
+        ).strip().lower()
+        self._wechat_msg_type = (
+            configured_type
+            if configured_type in {'markdown_v2', 'markdown', 'text'}
+            else 'markdown_v2'
+        )
         self._webhook_verify_ssl = getattr(config, 'webhook_verify_ssl', True)
         
     def send_to_wechat(self, content: str, *, timeout_seconds: Optional[float] = None) -> bool:
@@ -42,8 +49,8 @@ class WechatSender:
         推送消息到企业微信机器人
         
         企业微信 Webhook 消息格式：
-        支持 markdown 类型以及 text 类型, markdown 类型在微信中无法展示，可以使用 text 类型,
-        markdown 类型会解析 markdown 格式,text 类型会直接发送纯文本。
+        支持 markdown_v2、markdown 以及 text 类型。默认使用 markdown_v2；
+        text 类型会直接发送纯文本。
 
         markdown 类型示例：
         {
@@ -182,10 +189,16 @@ class WechatSender:
                     "content": content
                 }
             }
-        else:
+        if self._wechat_msg_type == 'markdown':
             return {
                 "msgtype": "markdown",
                 "markdown": {
                     "content": content
                 }
             }
+        return {
+            "msgtype": "markdown_v2",
+            "markdown_v2": {
+                "content": content
+            }
+        }

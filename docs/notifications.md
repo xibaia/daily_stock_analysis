@@ -61,7 +61,8 @@ Discord 长报告发送复用现有分片链路：单条 `content` 运行时不�
 | Key | Tier | Channel / feature | Actions source | Default |
 | --- | --- | --- | --- | --- |
 | `WECHAT_WEBHOOK_URL` | minimal | wechat | Secret | - |
-| `WECHAT_MSG_TYPE` | advanced | wechat | Variable or Secret | `markdown` |
+| `WECHAT_MSG_TYPE` | advanced | wechat | Variable or Secret | `markdown_v2` |
+| `WECHAT_MAX_BYTES` | advanced | wechat | Variable or Secret | `4000` |
 | `FEISHU_WEBHOOK_URL` | minimal | feishu | Secret | - |
 | `FEISHU_WEBHOOK_SECRET` | advanced | feishu | Secret | - |
 | `FEISHU_WEBHOOK_KEYWORD` | advanced | feishu | Variable or Secret | - |

@@ -72,6 +72,7 @@ _CATEGORY_DEFINITIONS: List[Dict[str, Any]] = [
 ]
 
 WEB_SETTINGS_HIDDEN_FROM_UI = {
+    "API_BIND_ADDRESS",
     "DATABASE_PATH",
     "DINGTALK_WEBHOOK_URL",
     "DINGTALK_SECRET",
@@ -1618,6 +1619,58 @@ _FIELD_DEFINITIONS: Dict[str, Dict[str, Any]] = {
             },
         ],
         "warning_codes": ["webhook_secret_value"],
+    },
+    "WECHAT_MSG_TYPE": {
+        "title": "WeChat Message Type",
+        "description": "Enterprise WeChat bot payload type.",
+        "category": "notification",
+        "data_type": "string",
+        "ui_control": "select",
+        "is_sensitive": False,
+        "is_required": False,
+        "is_editable": True,
+        "default_value": "markdown_v2",
+        "options": ["markdown_v2", "markdown", "text"],
+        "validation": {"allowed_values": ["markdown_v2", "markdown", "text"]},
+        "display_order": 11,
+        "help_key": "settings.notification.webhooks",
+        "examples": [
+            "WECHAT_MSG_TYPE=markdown_v2",
+            "WECHAT_MSG_TYPE=text",
+        ],
+        "docs": [
+            {
+                "label": "完整指南：企业微信通知",
+                "href": "https://github.com/ZhuLinsen/daily_stock_analysis/blob/main/docs/full-guide.md#企业微信",
+            },
+        ],
+        "warning_codes": [],
+    },
+    "WECHAT_MAX_BYTES": {
+        "title": "WeChat Max Bytes",
+        "description": "Maximum payload bytes before message chunking.",
+        "category": "notification",
+        "data_type": "integer",
+        "ui_control": "number",
+        "is_sensitive": False,
+        "is_required": False,
+        "is_editable": True,
+        "default_value": "4000",
+        "options": [],
+        "validation": {"min": 1},
+        "display_order": 12,
+        "help_key": "settings.notification.webhooks",
+        "examples": [
+            "WECHAT_MAX_BYTES=4000",
+            "WECHAT_MAX_BYTES=2048",
+        ],
+        "docs": [
+            {
+                "label": "完整指南：企业微信通知",
+                "href": "https://github.com/ZhuLinsen/daily_stock_analysis/blob/main/docs/full-guide.md#企业微信",
+            },
+        ],
+        "warning_codes": [],
     },
     "DINGTALK_APP_KEY": {
         "title": "DingTalk App Key",

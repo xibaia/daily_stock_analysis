@@ -113,6 +113,30 @@ class TestFeishuWebhookFieldsRegistered(unittest.TestCase):
             self.assertIn(key, field_keys, f"{key} missing from schema response")
 
 
+class TestWechatFormatFieldsRegistered(unittest.TestCase):
+    def test_message_type_and_byte_limit_are_explicit_settings(self):
+        message_type = get_field_definition("WECHAT_MSG_TYPE")
+        byte_limit = get_field_definition("WECHAT_MAX_BYTES")
+
+        self.assertEqual(message_type["default_value"], "markdown_v2")
+        self.assertEqual(
+            message_type["options"],
+            ["markdown_v2", "markdown", "text"],
+        )
+        self.assertEqual(message_type["ui_control"], "select")
+        self.assertEqual(byte_limit["data_type"], "integer")
+        self.assertEqual(byte_limit["default_value"], "4000")
+
+        schema = build_schema_response()
+        notification = next(
+            category
+            for category in schema["categories"]
+            if category["category"] == "notification"
+        )
+        keys = {field["key"] for field in notification["fields"]}
+        self.assertTrue({"WECHAT_MSG_TYPE", "WECHAT_MAX_BYTES"}.issubset(keys))
+
+
 class TestAstrBotFieldsRegistered(unittest.TestCase):
     """AstrBot config keys must be explicitly registered for settings UI."""
 

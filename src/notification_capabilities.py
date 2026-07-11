@@ -75,7 +75,7 @@ class RendererPreset:
 CHANNEL_PROFILES: Dict[str, ChannelProfile] = {
     "wechat": ChannelProfile(
         channel="wechat",
-        markdown="wechat_markdown",
+        markdown="markdown_v2",
         default_mode="full_report",
         max_text_bytes=4096,
         supports_image=True,
@@ -194,7 +194,7 @@ CHANNEL_RENDERER_PRESETS: Dict[str, RendererPreset] = {
     "wechat": RendererPreset(
         channel="wechat",
         text_renderer="wecom_markdown",
-        markdown="wechat_markdown",
+        markdown="markdown_v2",
         rich_renderer="wecom_card",
         image_renderer="png_poster",
         notes="Preset only; current runtime keeps the legacy WeCom dashboard text.",

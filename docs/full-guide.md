@@ -981,6 +981,8 @@ crontab -e
 2. 复制 Webhook URL
 3. 设置 `WECHAT_WEBHOOK_URL`
 
+默认使用 `WECHAT_MSG_TYPE=markdown_v2`。旧机器人需要兼容时可改为 `markdown`，纯文本可设为 `text`；超长内容继续由 `WECHAT_MAX_BYTES` 控制分片。
+
 ### 飞书
 
 > ⚠️ **关键区分**：`FEISHU_WEBHOOK_SECRET`（Webhook 签名密钥）和 `FEISHU_APP_SECRET`（飞书应用 Secret）是两个完全不同的配置，不能互换。
