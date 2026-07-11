@@ -19,6 +19,7 @@ from src.auth import (
     clear_rate_limit,
     create_session,
     get_client_ip,
+    has_user_password,
     has_stored_password,
     is_auth_enabled,
     is_password_changeable,
@@ -30,6 +31,8 @@ from src.auth import (
     verify_password,
     verify_stored_password,
     verify_session,
+    verify_session_role,
+    verify_user_password,
 )
 from src.config import Config, setup_env
 from src.core.config_manager import ConfigManager
@@ -160,7 +163,10 @@ def _get_auth_status_dict(request: Request | None = None) -> dict:
     logged_in = False
     if auth_enabled and request:
         cookie_val = request.cookies.get(COOKIE_NAME)
-        logged_in = verify_session(cookie_val) if cookie_val else False
+        role = verify_session_role(cookie_val) if cookie_val else None
+        logged_in = role is not None
+    else:
+        role = None
 
     # setupState determination:
     # - enabled: auth is active
@@ -179,6 +185,7 @@ def _get_auth_status_dict(request: Request | None = None) -> dict:
         "passwordSet": _password_set_for_response(auth_enabled),
         "passwordChangeable": is_password_changeable() if auth_enabled else False,
         "setupState": setup_state,
+        "role": role,
     }
 
 
@@ -258,7 +265,7 @@ async def auth_update_settings(request: Request, body: AuthSettingsRequest):
             cookie_val = request.cookies.get(COOKIE_NAME)
             # if target_enabled is True here, they are requesting to enable or keep auth enabled
             is_valid_session = cookie_val and verify_session(cookie_val)
-            
+
             if not is_valid_session:
                 if not current_password:
                     return JSONResponse(
@@ -353,7 +360,6 @@ async def auth_update_settings(request: Request, body: AuthSettingsRequest):
     return resp
 
 
-
 @router.post(
     "/login",
     summary="Login or set initial password",
@@ -403,7 +409,11 @@ async def auth_login(request: Request, body: LoginRequest):
                 content={"error": "invalid_password", "message": err},
             )
     else:
-        if not verify_password(password):
+        if verify_password(password):
+            role = "admin"
+        elif has_user_password() and verify_user_password(password):
+            role = "user"
+        else:
             record_login_failure(ip)
             return JSONResponse(
                 status_code=401,
@@ -411,14 +421,14 @@ async def auth_login(request: Request, body: LoginRequest):
             )
 
     clear_rate_limit(ip)
-    session_val = create_session()
+    session_val = create_session(role if password_set else "admin")
     if not session_val:
         return JSONResponse(
             status_code=500,
             content={"error": "internal_error", "message": "Failed to create session"},
         )
 
-    resp = JSONResponse(content={"ok": True})
+    resp = JSONResponse(content={"ok": True, "role": role if password_set else "admin"})
     _set_session_cookie(resp, session_val, request)
     return resp
 

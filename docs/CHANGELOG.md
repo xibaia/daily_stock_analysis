@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 > For user-friendly release highlights, see the [GitHub Releases](https://github.com/ZhuLinsen/daily_stock_analysis/releases) page.
 
 ## [Unreleased]
+- [新功能] 支持可选的只读 Web 用户角色，并由认证中间件统一限制写操作和系统配置访问。
 - [修复] LiteLLM 根据 YAML route 的 `model_info.dsa_thinking` 显式桥接 Anthropic 顶层 thinking 参数，普通分析与 Agent 共用且不再按模型名猜测；Docker 入口动态修复 efinance 及受限可配置缓存目录权限。
 - [新功能] 新增 opt-in 的低内存 systemd 调度模式，以带互斥锁的一次性 analyzer 容器执行分析，支持 `SCHEDULE_TIMES` 多时点和无副作用的 unit 渲染验证，并与默认 Web/API runtime scheduler 明确互斥。
 - [新功能] 新增安全的 `stock_daily` 近期数据回填命令，支持 dry-run、正参数校验、有界并发、逐股票失败摘要、SQLite 在线备份和幂等 UPSERT；Docker 仅包含该审核过的脚本入口。

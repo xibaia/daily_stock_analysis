@@ -12,7 +12,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from src.auth import COOKIE_NAME, is_auth_enabled, verify_session
+from src.auth import COOKIE_NAME, is_auth_enabled, verify_session, verify_session_role
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +26,9 @@ EXEMPT_PATHS = frozenset({
     "/redoc",
     "/openapi.json",
 })
+
+READ_ONLY_DENIED_PATH_PREFIXES = ("/api/v1/system-config",)
+USER_ALLOWED_WRITE_PATHS = frozenset({"/api/v1/auth/logout"})
 
 
 def _path_exempt(path: str) -> bool:
@@ -62,6 +65,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 },
             )
 
+        role = verify_session_role(cookie_val)
+        if role == "user" and (
+            (request.method not in {"GET", "HEAD", "OPTIONS"} and path not in USER_ALLOWED_WRITE_PATHS)
+            or path.startswith(READ_ONLY_DENIED_PATH_PREFIXES)
+        ):
+            return JSONResponse(status_code=403, content={"error": "forbidden", "message": "Admin role required"})
         return await call_next(request)
 
 

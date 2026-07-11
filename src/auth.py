@@ -18,7 +18,7 @@ import secrets
 import sys
 import time
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Literal, Optional, Tuple
 
 from dotenv import dotenv_values
 
@@ -30,12 +30,15 @@ RATE_LIMIT_WINDOW_SEC = 300
 RATE_LIMIT_MAX_FAILURES = 5
 SESSION_MAX_AGE_HOURS_DEFAULT = 24
 MIN_PASSWORD_LEN = 6
+AuthRole = Literal["admin", "user"]
 
 # Lazy-loaded state
 _auth_enabled: Optional[bool] = None
 _session_secret: Optional[bytes] = None
 _password_hash_salt: Optional[bytes] = None
 _password_hash_stored: Optional[bytes] = None
+_user_password_hash_salt: Optional[bytes] = None
+_user_password_hash_stored: Optional[bytes] = None
 _rate_limit: dict[str, Tuple[int, float]] = {}
 _rate_limit_lock = None
 
@@ -66,15 +69,20 @@ def _get_credential_path() -> Path:
     return _get_data_dir() / ".admin_password_hash"
 
 
+def _get_user_credential_path() -> Path:
+    """Path to the optional read-only user password hash."""
+    return _get_data_dir() / ".user_password_hash"
+
+
 def _is_auth_enabled_from_env() -> bool:
     """Read ADMIN_AUTH_ENABLED from .env file."""
     _ensure_env_loaded()
     env_file = os.getenv("ENV_FILE")
     env_path = Path(env_file) if env_file else Path(__file__).resolve().parent.parent / ".env"
-    if not env_path.exists():
-        return False
-    values = dotenv_values(env_path)
-    val = (values.get("ADMIN_AUTH_ENABLED") or "").strip().lower()
+    values = dotenv_values(env_path) if env_path.exists() else {}
+    file_value = values.get("ADMIN_AUTH_ENABLED")
+    runtime_value = os.environ.get("ADMIN_AUTH_ENABLED")
+    val = (runtime_value if runtime_value is not None and runtime_value != file_value else file_value or "").strip().lower()
     return val in ("true", "1", "yes")
 
 
@@ -186,12 +194,33 @@ def _load_credential_from_file() -> bool:
         return False
 
 
+def _load_user_credential_from_file() -> bool:
+    """Load the optional read-only user credential from disk."""
+    global _user_password_hash_salt, _user_password_hash_stored
+    path = _get_user_credential_path()
+    if not path.exists():
+        _user_password_hash_salt = None
+        _user_password_hash_stored = None
+        return False
+    try:
+        parsed = _parse_password_hash(path.read_text().strip())
+        if parsed is None:
+            logger.warning("Invalid .user_password_hash format, ignoring")
+            return False
+        _user_password_hash_salt, _user_password_hash_stored = parsed
+        return True
+    except OSError as e:
+        logger.error("Failed to read user credential file: %s", e)
+        return False
+
+
 def refresh_auth_state() -> None:
     """Reload auth-related state from disk and env."""
     global _auth_enabled, _session_secret
     _auth_enabled = None
     _session_secret = None
     _load_credential_from_file()
+    _load_user_credential_from_file()
 
 
 def is_auth_enabled() -> bool:
@@ -213,6 +242,18 @@ def verify_stored_password(password: str) -> bool:
     if not has_stored_password():
         return False
     return _verify_password_hash(password, _password_hash_salt, _password_hash_stored)
+
+
+def has_user_password() -> bool:
+    """Return whether an optional read-only user credential exists."""
+    return _load_user_credential_from_file()
+
+
+def verify_user_password(password: str) -> bool:
+    """Verify a password against the optional read-only user credential."""
+    if not has_user_password():
+        return False
+    return _verify_password_hash(password, _user_password_hash_salt, _user_password_hash_stored)
 
 
 def is_password_set() -> bool:
@@ -243,6 +284,23 @@ def _validate_password(pwd: str) -> Optional[str]:
     return None
 
 
+def _write_password_hash(path: Path, password: str) -> Optional[str]:
+    """Atomically persist a PBKDF2 password hash with owner-only permissions."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    salt = secrets.token_bytes(32)
+    derived = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt=salt, iterations=PBKDF2_ITERATIONS)
+    content = f"{base64.standard_b64encode(salt).decode('ascii')}:{base64.standard_b64encode(derived).decode('ascii')}"
+    try:
+        tmp_path = path.with_suffix(".tmp")
+        tmp_path.write_text(content)
+        tmp_path.chmod(0o600)
+        tmp_path.replace(path)
+        return None
+    except OSError as e:
+        logger.error("Failed to write credential file: %s", e)
+        return "密码保存失败"
+
+
 def set_initial_password(password: str) -> Optional[str]:
     """
     Set initial password (first-time setup). Returns error message or None on success.
@@ -252,31 +310,21 @@ def set_initial_password(password: str) -> Optional[str]:
     if err:
         return err
 
-    data_dir = _get_data_dir()
-    data_dir.mkdir(parents=True, exist_ok=True)
-    cred_path = _get_credential_path()
-
-    salt = secrets.token_bytes(32)
-    derived = hashlib.pbkdf2_hmac(
-        "sha256",
-        password.encode("utf-8"),
-        salt=salt,
-        iterations=PBKDF2_ITERATIONS,
-    )
-    salt_b64 = base64.standard_b64encode(salt).decode("ascii")
-    hash_b64 = base64.standard_b64encode(derived).decode("ascii")
-    content = f"{salt_b64}:{hash_b64}"
-
-    try:
-        tmp_path = cred_path.with_suffix(".tmp")
-        tmp_path.write_text(content)
-        tmp_path.chmod(0o600)
-        tmp_path.replace(cred_path)
+    err = _write_password_hash(_get_credential_path(), password)
+    if err is None:
         _load_credential_from_file()
-        return None
-    except OSError as e:
-        logger.error("Failed to write credential file: %s", e)
-        return "密码保存失败"
+    return err
+
+
+def set_user_password(password: str) -> Optional[str]:
+    """Set or replace the optional read-only user password from the CLI."""
+    err = _validate_password(password)
+    if err:
+        return err
+    err = _write_password_hash(_get_user_credential_path(), password)
+    if err is None:
+        _load_user_credential_from_file()
+    return err
 
 
 def verify_password(password: str) -> bool:
@@ -304,56 +352,43 @@ def change_password(current: str, new: str) -> Optional[str]:
     if err:
         return err
 
-    cred_path = _get_credential_path()
-    salt = secrets.token_bytes(32)
-    derived = hashlib.pbkdf2_hmac(
-        "sha256",
-        new.encode("utf-8"),
-        salt=salt,
-        iterations=PBKDF2_ITERATIONS,
-    )
-    salt_b64 = base64.standard_b64encode(salt).decode("ascii")
-    hash_b64 = base64.standard_b64encode(derived).decode("ascii")
-    content = f"{salt_b64}:{hash_b64}"
-
-    try:
-        tmp_path = cred_path.with_suffix(".tmp")
-        tmp_path.write_text(content)
-        tmp_path.chmod(0o600)
-        tmp_path.replace(cred_path)
-        # Reload into memory so subsequent verify_password uses new hash
+    err = _write_password_hash(_get_credential_path(), new)
+    if err is None:
         _load_credential_from_file()
-        return None
-    except OSError as e:
-        logger.error("Failed to write credential file: %s", e)
-        return "密码保存失败"
+    return err
 
 
-def create_session() -> str:
-    """Create a signed session payload. Format: nonce.ts.signature."""
+def create_session(role: Optional[AuthRole] = None) -> str:
+    """Create a signed session; explicit roles use role.nonce.ts.signature."""
     secret = _get_session_secret()
     if not secret:
         return ""
     nonce = secrets.token_urlsafe(32)
     ts = str(int(time.time()))
-    payload = f"{nonce}.{ts}"
+    payload = f"{role}.{nonce}.{ts}" if role else f"{nonce}.{ts}"
     sig = hmac.new(secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()
     return f"{payload}.{sig}"
 
 
-def verify_session(value: str) -> bool:
-    """Verify session cookie and check expiry."""
+def verify_session_role(value: str) -> Optional[AuthRole]:
+    """Verify a session cookie and return its role, accepting legacy admin sessions."""
     secret = _get_session_secret()
     if not secret or not value:
-        return False
+        return None
     parts = value.split(".")
-    if len(parts) != 3:
-        return False
-    nonce, ts_str, sig = parts[0], parts[1], parts[2]
-    payload = f"{nonce}.{ts_str}"
+    if len(parts) == 3:
+        role: AuthRole = "admin"
+        nonce, ts_str, sig = parts
+        payload = f"{nonce}.{ts_str}"
+    elif len(parts) == 4 and parts[0] in ("admin", "user"):
+        role = parts[0]  # type: ignore[assignment]
+        nonce, ts_str, sig = parts[1:]
+        payload = f"{role}.{nonce}.{ts_str}"
+    else:
+        return None
     expected = hmac.new(secret, payload.encode("utf-8"), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(sig, expected):
-        return False
+        return None
     try:
         ts = int(ts_str)
     except ValueError:
@@ -363,8 +398,13 @@ def verify_session(value: str) -> bool:
     except ValueError:
         max_age_hours = SESSION_MAX_AGE_HOURS_DEFAULT
     if time.time() - ts > max_age_hours * 3600:
-        return False
-    return True
+        return None
+    return role
+
+
+def verify_session(value: str) -> bool:
+    """Backward-compatible boolean session verification."""
+    return verify_session_role(value) is not None
 
 
 def get_client_ip(request) -> str:
@@ -432,31 +472,10 @@ def overwrite_password(new_password: str) -> Optional[str]:
     if err:
         return err
 
-    data_dir = _get_data_dir()
-    data_dir.mkdir(parents=True, exist_ok=True)
-    cred_path = _get_credential_path()
-
-    salt = secrets.token_bytes(32)
-    derived = hashlib.pbkdf2_hmac(
-        "sha256",
-        new_password.encode("utf-8"),
-        salt=salt,
-        iterations=PBKDF2_ITERATIONS,
-    )
-    salt_b64 = base64.standard_b64encode(salt).decode("ascii")
-    hash_b64 = base64.standard_b64encode(derived).decode("ascii")
-    content = f"{salt_b64}:{hash_b64}"
-
-    try:
-        tmp_path = cred_path.with_suffix(".tmp")
-        tmp_path.write_text(content)
-        tmp_path.chmod(0o600)
-        tmp_path.replace(cred_path)
+    err = _write_password_hash(_get_credential_path(), new_password)
+    if err is None:
         _load_credential_from_file()
-        return None
-    except OSError as e:
-        logger.error("Failed to write credential file: %s", e)
-        return "密码保存失败"
+    return err
 
 
 def reset_password_cli() -> int:
@@ -488,11 +507,30 @@ def reset_password_cli() -> int:
     return 0
 
 
+def reset_user_password_cli() -> int:
+    """Interactively create or replace the optional read-only user password."""
+    print("Enter new read-only user password (will not echo):", end=" ")
+    pwd = getpass.getpass("")
+    print("Confirm new password:", end=" ")
+    if pwd != getpass.getpass(""):
+        print("Error: Passwords do not match", file=sys.stderr)
+        return 1
+    err = set_user_password(pwd)
+    if err:
+        print(f"Error: {err}", file=sys.stderr)
+        return 1
+    print("Read-only user password has been set successfully.")
+    return 0
+
+
 def _main() -> int:
     """CLI entry: reset_password subcommand."""
-    if len(sys.argv) > 1 and sys.argv[1] == "reset_password":
-        return reset_password_cli()
-    print("Usage: python -m src.auth reset_password", file=sys.stderr)
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "reset_password":
+            return reset_password_cli()
+        if sys.argv[1] == "reset_user_password":
+            return reset_user_password_cli()
+    print("Usage: python -m src.auth {reset_password|reset_user_password}", file=sys.stderr)
     return 1
 
 

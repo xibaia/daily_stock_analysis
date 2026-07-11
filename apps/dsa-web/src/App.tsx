@@ -26,7 +26,7 @@ const StockScreeningPage = lazy(() => import('./pages/StockScreeningPage'));
 
 const AppContent: React.FC = () => {
   const location = useLocation();
-  const { authEnabled, loggedIn, isLoading, loadError, refreshStatus } = useAuth();
+  const { authEnabled, loggedIn, role, isLoading, loadError, refreshStatus } = useAuth();
   const { t } = useUiLanguage();
 
   useEffect(() => {
@@ -87,7 +87,7 @@ const AppContent: React.FC = () => {
         <Route path="/backtest" element={<BacktestPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/usage" element={<TokenUsagePage />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/settings" element={authEnabled && role !== 'admin' ? <Navigate to="/" replace /> : <SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
