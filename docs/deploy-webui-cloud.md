@@ -10,6 +10,7 @@
 
 - [方式一：直接部署（pip + python）](#方式一直接部署pip--python)
 - [方式二：Docker Compose](#方式二docker-compose)
+- [可选：低内存一次性调度](#可选低内存一次性调度)
 - [如何在浏览器里打开界面](#如何在浏览器里打开界面)
 - [如何确认 Docker 重建已生效](#如何确认-docker-重建已生效)
 - [访问不了？先检查这几项](#访问不了先检查这几项)
@@ -132,6 +133,37 @@ API_BIND_ADDRESS=0.0.0.0
 docker-compose -f ./docker/docker-compose.yml down
 docker-compose -f ./docker/docker-compose.yml up -d
 ```
+
+---
+
+## 可选：低内存一次性调度
+
+正常部署优先使用 Web/API 进程内置的 runtime scheduler。只有需要在空闲期完全释放 analyzer 容器内存时，才启用本节的宿主机 systemd timer；两种调度方式不要同时负责同一批任务，否则会重复分析和通知。
+
+`analyzer` 位于 opt-in 的 `scheduler` Compose profile，默认 `docker compose up -d` 不会启动它。先用不修改 systemd 的渲染模式检查当前 `.env` 中的 `SCHEDULE_TIMES`（逗号分隔）或 `SCHEDULE_TIME`：
+
+```bash
+DSA_SYSTEMD_DIR=/tmp/dsa-systemd scripts/install_systemd_analysis_timer.sh --render-only
+```
+
+确认生成的 unit 后再安装：
+
+```bash
+sudo scripts/install_systemd_analysis_timer.sh
+systemctl status dsa-analysis.timer
+```
+
+每次触发会执行 `scripts/run_scheduled_analysis_once.sh`，通过互斥目录防止重叠，并运行 `docker compose --profile scheduler run --rm --no-deps analyzer python main.py`。容器内会显式关闭嵌套 scheduler，只执行当前这一轮。修改 Web 设置中的调度时间后需重新运行安装脚本，因为 systemd 不会自动监听 `.env`。
+
+回滚时执行：
+
+```bash
+sudo systemctl disable --now dsa-analysis.timer
+sudo rm -f /etc/systemd/system/dsa-analysis.service /etc/systemd/system/dsa-analysis.timer
+sudo systemctl daemon-reload
+```
+
+之后可重新启用 Web/API runtime scheduler。
 
 ---
 

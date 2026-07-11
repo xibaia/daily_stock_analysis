@@ -3,9 +3,9 @@
 # ===================================
 # 
 # 使用方式:
-#   定时模式: docker-compose -f ./docker/docker-compose.yml up -d
-#   FastAPI模式: docker-compose -f ./docker/docker-compose.yml up -d server
-#   同时启动: docker-compose -f ./docker/docker-compose.yml up -d analyzer server
+#   Web/API 模式: docker compose -f ./docker/docker-compose.yml up -d server
+#   常驻调度模式: docker compose -f ./docker/docker-compose.yml --profile scheduler up -d analyzer
+#   低内存一次性调度: scripts/install_systemd_analysis_timer.sh
 
 name: daily-stock-analysis
 version: '3.8'
@@ -61,6 +61,8 @@ services:
   analyzer:
     <<: *common
     container_name: stock-analyzer
+    profiles:
+      - scheduler
 
   # FastAPI 模式
   server:

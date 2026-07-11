@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 > For user-friendly release highlights, see the [GitHub Releases](https://github.com/ZhuLinsen/daily_stock_analysis/releases) page.
 
 ## [Unreleased]
+- [新功能] 新增 opt-in 的低内存 systemd 调度模式，以带互斥锁的一次性 analyzer 容器执行分析，支持 `SCHEDULE_TIMES` 多时点和无副作用的 unit 渲染验证，并与默认 Web/API runtime scheduler 明确互斥。
 - [新功能] 新增安全的 `stock_daily` 近期数据回填命令，支持 dry-run、正参数校验、有界并发、逐股票失败摘要、SQLite 在线备份和幂等 UPSERT；Docker 仅包含该审核过的脚本入口。
 - [修复] Web 复制操作统一使用安全上下文 Clipboard API，并在 HTTP/intranet 或 API 不可用时同步回退到 `execCommand`，覆盖报告、诊断、聊天与 JSON 视图且保证临时 DOM 清理。
 - [修复] 企业微信发送器、能力元数据和系统配置统一支持并默认使用 `markdown_v2`，保留 `markdown`/`text` 兼容模式及现有图片、分片路径。
