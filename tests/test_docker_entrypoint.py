@@ -74,6 +74,27 @@ def test_docker_compose_default_memory_recommendation_is_not_512m() -> None:
     assert "MAX_WORKERS=1" in compose_text
 
 
+def test_docker_compose_api_port_defaults_to_loopback_and_is_overridable() -> None:
+    compose_text = (REPO_ROOT / "docker" / "docker-compose.yml").read_text(
+        encoding="utf-8"
+    )
+    compose = yaml.safe_load(compose_text)
+
+    assert compose["services"]["server"]["ports"] == [
+        "${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8000}:${API_PORT:-8000}"
+    ]
+
+
+def test_docker_deployment_guide_documents_public_bind_override() -> None:
+    env_example = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+    guide = (REPO_ROOT / "docs" / "deploy-webui-cloud.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "API_BIND_ADDRESS=127.0.0.1" in env_example
+    assert "API_BIND_ADDRESS=0.0.0.0" in guide
+
+
 def test_docker_memory_guides_describe_resource_profiles() -> None:
     doc_paths = (
         "docs/DEPLOY.md",

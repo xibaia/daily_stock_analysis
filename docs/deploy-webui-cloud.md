@@ -118,6 +118,14 @@ docker-compose -f ./docker/docker-compose.yml ps
 API_PORT=8888
 ```
 
+Docker Compose 默认只把该端口发布到宿主机回环地址，适合由同机 Nginx 反向代理访问。如果确实需要通过服务器公网 IP 直接访问，还需显式设置：
+
+```env
+API_BIND_ADDRESS=0.0.0.0
+```
+
+公网直连时请同时启用云安全组、防火墙和 Web 登录认证。使用 Nginx 的部署无需修改默认 `API_BIND_ADDRESS=127.0.0.1`。
+
 然后重新启动容器：
 
 ```bash
@@ -236,7 +244,7 @@ sudo firewall-cmd --reload
 检查访问地址里的端口是否和 `.env` / 启动命令里设置的端口一致。
 
 - 直接部署：默认 8000，可通过 `WEBUI_PORT=xxxx` 修改
-- Docker：默认 8000，可通过 `API_PORT=xxxx` 修改
+- Docker：默认在 `127.0.0.1:8000` 发布，可通过 `API_PORT=xxxx` 修改端口；公网直连还需设置 `API_BIND_ADDRESS=0.0.0.0`
 
 ### 5. 页面能打开，但 UI 元素异常变大 / 布局错乱
 
