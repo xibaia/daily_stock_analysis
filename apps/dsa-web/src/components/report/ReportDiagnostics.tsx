@@ -11,6 +11,7 @@ import type {
   RunDiagnosticSummary,
 } from '../../types/analysis';
 import { normalizeReportLanguage } from '../../utils/reportLanguage';
+import { copyText } from '../../utils/clipboard';
 import { Badge, Button, Card, StatusDot } from '../common';
 
 interface ReportDiagnosticsProps {
@@ -281,12 +282,12 @@ export const ReportDiagnostics: React.FC<ReportDiagnosticsProps> = ({
   );
 
   const copyDiagnostics = async () => {
-    if (!hasCopyText || !navigator.clipboard?.writeText) {
+    if (!hasCopyText) {
       return;
     }
 
     try {
-      await navigator.clipboard.writeText(visibleSummary.copyText);
+      await copyText(visibleSummary.copyText);
       setCopied(true);
       if (resetCopiedTimerRef.current !== null) {
         window.clearTimeout(resetCopiedTimerRef.current);

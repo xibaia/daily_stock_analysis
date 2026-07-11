@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useUiLanguage } from '../../contexts/UiLanguageContext';
+import { copyText } from '../../utils/clipboard';
 
 interface JsonViewerProps {
   data: Record<string, unknown> | unknown[] | null | undefined;
@@ -68,9 +69,13 @@ export const JsonViewer: React.FC<JsonViewerProps> = ({
   const jsonString = JSON.stringify(data, null, 2);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(jsonString);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await copyText(jsonString);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error('Copy failed:', error);
+    }
   };
 
   const highlightJson = (json: string): React.ReactNode => {

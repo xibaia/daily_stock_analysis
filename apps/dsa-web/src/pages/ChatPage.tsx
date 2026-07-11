@@ -4,6 +4,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { cn } from '../utils/cn';
+import { copyText } from '../utils/clipboard';
 import { agentApi } from '../api/agent';
 import { systemConfigApi } from '../api/systemConfig';
 import { ApiErrorAlert, Badge, Button, ConfirmDialog, EmptyState, InlineAlert, ScrollArea, Tooltip } from '../components/common';
@@ -657,7 +658,7 @@ const ChatPage: React.FC = () => {
 
   const copyMessageToClipboard = async (msgId: string, content: string) => {
     try {
-      await navigator.clipboard.writeText(content);
+      await copyText(content);
       setCopiedMessages((prev) => new Set(prev).add(msgId));
       const existingTimer = copyResetTimerRef.current[msgId];
       if (existingTimer !== undefined) {

@@ -10,6 +10,7 @@ import type {
   ReportLanguage,
 } from '../../types/analysis';
 import { markdownToPlainText } from '../../utils/markdown';
+import { copyText } from '../../utils/clipboard';
 import { getReportText, normalizeReportLanguage } from '../../utils/reportLanguage';
 import { Card } from '../common';
 import { Tooltip } from '../common/Tooltip';
@@ -437,7 +438,7 @@ export const MarketReviewReportView: React.FC<MarketReviewReportViewProps> = ({
     }
     try {
       const value = type === 'markdown' ? content : markdownToPlainText(content);
-      await navigator.clipboard.writeText(value);
+      await copyText(value);
       setCopiedType(type);
       window.setTimeout(() => setCopiedType(null), 2000);
     } catch (err) {

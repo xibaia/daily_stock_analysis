@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { historyApi } from '../../api/history';
 import type { ReportLanguage } from '../../types/analysis';
 import { markdownToPlainText } from '../../utils/markdown';
+import { copyText } from '../../utils/clipboard';
 import { getReportText, normalizeReportLanguage } from '../../utils/reportLanguage';
 import { Tooltip } from '../common/Tooltip';
 import { ReportMarkdownBody } from './ReportMarkdownBody';
@@ -32,7 +33,7 @@ export const ReportMarkdownPanel: React.FC<ReportMarkdownPanelProps> = ({
   const handleCopyMarkdown = useCallback(async () => {
     if (!content) return;
     try {
-      await navigator.clipboard.writeText(content);
+      await copyText(content);
       setCopiedType('markdown');
       setTimeout(() => setCopiedType(null), 2000);
     } catch (error) {
@@ -44,7 +45,7 @@ export const ReportMarkdownPanel: React.FC<ReportMarkdownPanelProps> = ({
     if (!content) return;
     try {
       const plainText = markdownToPlainText(content);
-      await navigator.clipboard.writeText(plainText);
+      await copyText(plainText);
       setCopiedType('text');
       setTimeout(() => setCopiedType(null), 2000);
     } catch (error) {

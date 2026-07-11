@@ -4,6 +4,7 @@ import type { ReportDetails as ReportDetailsType, ReportLanguage } from '../../t
 import { Card } from '../common';
 import { DashboardPanelHeader } from '../dashboard';
 import { getReportText, normalizeReportLanguage } from '../../utils/reportLanguage';
+import { copyText } from '../../utils/clipboard';
 
 interface ReportDetailsProps {
   details?: ReportDetailsType;
@@ -49,7 +50,7 @@ export const ReportDetails: React.FC<ReportDetailsProps> = ({
 
   const copyToClipboard = async (content: string, panel: JsonPanel) => {
     try {
-      await navigator.clipboard.writeText(content);
+      await copyText(content);
       setCopiedPanels((prev) => ({
         ...prev,
         [panel]: true,
