@@ -206,6 +206,57 @@ def test_existing_asset_is_served_from_explicit_assets_route(tmp_path: Path) -> 
     assert css_response.headers["content-type"].startswith("text/css")
 
 
+def test_hashed_assets_are_immutable_but_plain_assets_revalidate(tmp_path: Path) -> None:
+    from api.app import create_app
+
+    static_dir = tmp_path / "static"
+    assets_dir = static_dir / "assets"
+    assets_dir.mkdir(parents=True)
+    (assets_dir / "index-a1b2c3d4.js").write_text("// hashed", encoding="utf-8")
+    (assets_dir / "runtime.js").write_text("// plain", encoding="utf-8")
+    _write_index(static_dir, _vite_index("index-a1b2c3d4.js", "runtime.js"))
+
+    client = TestClient(create_app(static_dir=static_dir))
+
+    hashed_response = client.get("/assets/index-a1b2c3d4.js")
+    plain_response = client.get("/assets/runtime.js")
+
+    assert hashed_response.headers["cache-control"] == (
+        "public, max-age=31536000, immutable"
+    )
+    assert plain_response.headers["cache-control"] == "no-cache"
+
+
+def test_large_static_asset_supports_gzip_without_weakening_index_cache(
+    tmp_path: Path,
+) -> None:
+    from api.app import create_app
+
+    static_dir = tmp_path / "static"
+    assets_dir = static_dir / "assets"
+    assets_dir.mkdir(parents=True)
+    (assets_dir / "index-a1b2c3d4.js").write_text("const value = 1;\n" * 200, encoding="utf-8")
+    (assets_dir / "index-a1b2c3d4.css").write_text("body{}", encoding="utf-8")
+    _write_index(
+        static_dir,
+        _vite_index("index-a1b2c3d4.js", "index-a1b2c3d4.css"),
+    )
+
+    client = TestClient(create_app(static_dir=static_dir))
+
+    asset_response = client.get(
+        "/assets/index-a1b2c3d4.js",
+        headers={"accept-encoding": "gzip"},
+    )
+    index_response = client.get("/", headers={"accept-encoding": "gzip"})
+
+    assert asset_response.headers["content-encoding"] == "gzip"
+    assert "Accept-Encoding" in asset_response.headers["vary"]
+    assert index_response.headers["cache-control"] == (
+        "no-store, no-cache, must-revalidate, max-age=0"
+    )
+
+
 def test_existing_js_asset_overrides_bad_system_mime_mapping(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from api.app import create_app
 

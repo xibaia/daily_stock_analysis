@@ -29,6 +29,7 @@ from typing import List, Optional
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -48,11 +49,14 @@ _FRONTEND_ASSET_MEDIA_TYPES = {
     ".mjs": "text/javascript",
 }
 _SAFE_MISSING_ASSET_MEDIA_TYPES = frozenset(_FRONTEND_ASSET_MEDIA_TYPES.values())
+_HASHED_ASSET_FILENAME_PATTERN = re.compile(r"-[A-Za-z0-9_-]{8,}\.[^.]+$")
 _FRONTEND_INDEX_NO_CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
     "Expires": "0",
 }
+_HASHED_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
+_PLAIN_ASSET_CACHE_CONTROL = "no-cache"
 
 
 def _frontend_index_response(static_dir: Path) -> FileResponse:
@@ -141,6 +145,12 @@ def _missing_asset_media_type(asset_path: str) -> str:
     if content_type in _SAFE_MISSING_ASSET_MEDIA_TYPES:
         return content_type
     return "text/plain"
+
+
+def _frontend_asset_cache_control(asset_path: str) -> str:
+    if _HASHED_ASSET_FILENAME_PATTERN.search(Path(asset_path).name):
+        return _HASHED_ASSET_CACHE_CONTROL
+    return _PLAIN_ASSET_CACHE_CONTROL
 
 
 def _warn_if_open_cors_without_auth() -> None:
@@ -357,6 +367,7 @@ def create_app(static_dir: Optional[Path] = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
 
     add_auth_middleware(app)
     
@@ -509,7 +520,14 @@ def create_app(static_dir: Optional[Path] = None) -> FastAPI:
                 )
             if file_path.is_file():
                 relative_path = file_path.relative_to(assets_root).as_posix()
-                return await assets_static_files.get_response(relative_path, request.scope)
+                response = await assets_static_files.get_response(
+                    relative_path,
+                    request.scope,
+                )
+                response.headers["Cache-Control"] = _frontend_asset_cache_control(
+                    relative_path
+                )
+                return response
             return Response(
                 content="asset not found",
                 status_code=404,
