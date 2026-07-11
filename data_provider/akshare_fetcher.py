@@ -1769,7 +1769,11 @@ class AkshareFetcher(BaseFetcher):
                 "[MarketStats] component=market_stats provider=AkshareFetcher "
                 "api=ak.stock_zh_a_spot_em action=request_start"
             )
-            df = ak.stock_zh_a_spot_em()
+            df = _akshare_call_with_timeout(
+                ak.stock_zh_a_spot_em,
+                timeout=self._history_call_timeout,
+                call_name="ak.stock_zh_a_spot_em",
+            )
             elapsed = time.monotonic() - started_at
             logger.info(
                 "[MarketStats] component=market_stats provider=AkshareFetcher "
@@ -1799,7 +1803,11 @@ class AkshareFetcher(BaseFetcher):
                 "[MarketStats] component=market_stats provider=AkshareFetcher "
                 "api=ak.stock_zh_a_spot action=request_start"
             )
-            df = ak.stock_zh_a_spot()
+            df = _akshare_call_with_timeout(
+                ak.stock_zh_a_spot,
+                timeout=self._history_call_timeout,
+                call_name="ak.stock_zh_a_spot",
+            )
             elapsed = time.monotonic() - started_at
             logger.info(
                 "[MarketStats] component=market_stats provider=AkshareFetcher "

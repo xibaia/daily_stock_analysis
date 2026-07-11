@@ -516,6 +516,29 @@ class TestFundamentalContext(unittest.TestCase):
             ctx = manager.get_capital_flow_context("600519", budget_seconds=0.5)
         self.assertEqual(ctx["status"], "not_supported")
 
+    def test_capital_flow_adapter_failure_stays_failed(self) -> None:
+        manager = DataFetcherManager(fetchers=[])
+        cfg = SimpleNamespace(
+            enable_fundamental_pipeline=True,
+            fundamental_cache_ttl_seconds=120,
+            fundamental_stage_timeout_seconds=1.5,
+            fundamental_fetch_timeout_seconds=0.8,
+            fundamental_retry_max=1,
+        )
+        with patch("src.config.get_config", return_value=cfg), patch(
+            "data_provider.fundamental_adapter.AkshareFundamentalAdapter.get_capital_flow",
+            return_value={
+                "status": "failed",
+                "stock_flow": {},
+                "sector_rankings": {"top": [], "bottom": []},
+                "source_chain": [],
+                "errors": ["eastmoney_stock_fflow:ConnectionError"],
+            },
+        ):
+            ctx = manager.get_capital_flow_context("600519", budget_seconds=0.5)
+
+        self.assertEqual(ctx["status"], "failed")
+
     def test_get_belong_boards_from_capability_probe(self) -> None:
         fetcher = _DummyBoardFetcher(
             "EfinanceFetcher",

@@ -7,9 +7,11 @@ import os
 import sys
 import unittest
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pandas as pd
+import data_provider.fundamental_adapter as fundamental_adapter_module
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -22,6 +24,114 @@ from data_provider.fundamental_adapter import (
 
 
 class TestFundamentalAdapter(unittest.TestCase):
+    def test_candidate_probe_skips_dataframe_rejected_by_validator(self) -> None:
+        adapter = AkshareFundamentalAdapter()
+        fake_akshare = SimpleNamespace(
+            first=lambda: pd.DataFrame({"股票代码": ["000001"]}),
+            second=lambda: pd.DataFrame({"股票代码": ["600519"]}),
+        )
+
+        with patch.dict(sys.modules, {"akshare": fake_akshare}):
+            frame, source, errors = adapter._call_df_candidates(
+                [("first", {}), ("second", {})],
+                validator=lambda df: "600519" in df["股票代码"].tolist(),
+            )
+
+        self.assertEqual(source, "second")
+        self.assertEqual(frame.iloc[0]["股票代码"], "600519")
+        self.assertEqual(errors, [])
+
+    def test_fundamental_bundle_uses_supported_earnings_signatures(self) -> None:
+        adapter = AkshareFundamentalAdapter()
+        calls = []
+
+        def record_candidates(candidates, validator=None):
+            calls.append((candidates, validator))
+            return None, None, []
+
+        with patch.object(adapter, "_call_df_candidates", side_effect=record_candidates):
+            adapter.get_fundamental_bundle("600519")
+
+        forecast_candidates, forecast_validator = calls[1]
+        quick_candidates, quick_validator = calls[2]
+        top10_candidates, top10_validator = calls[5]
+
+        self.assertEqual(
+            forecast_candidates,
+            [("stock_yjyg_em", {}), ("stock_yjbb_em", {})],
+        )
+        self.assertEqual(quick_candidates, [("stock_yjkb_em", {})])
+        self.assertNotIn("stock_gdfx_top_10_em", [name for name, _ in top10_candidates])
+        self.assertIsNotNone(forecast_validator)
+        self.assertIsNotNone(quick_validator)
+        self.assertIsNotNone(top10_validator)
+
+    def test_capital_flow_uses_direct_single_stock_history_and_normalizes_units(self) -> None:
+        adapter = AkshareFundamentalAdapter()
+        flow_frame = pd.DataFrame(
+            {
+                "日期": [f"2026-06-{day:02d}" for day in range(1, 11)],
+                "主力净流入-净额": [f"{day * 100}万" for day in range(1, 11)],
+            }
+        )
+
+        with patch(
+            "data_provider.fundamental_adapter._fetch_eastmoney_stock_fund_flow",
+            return_value=flow_frame,
+        ) as fetch_flow, patch.object(
+            adapter,
+            "_call_df_candidates",
+            side_effect=AssertionError("market-wide fallback must not run"),
+        ):
+            payload = adapter.get_capital_flow("300925")
+
+        fetch_flow.assert_called_once_with("300925", "sz")
+        self.assertEqual(payload["status"], "partial")
+        self.assertEqual(payload["stock_flow"]["main_net_inflow"], 10_000_000.0)
+        self.assertEqual(payload["stock_flow"]["inflow_5d"], 40_000_000.0)
+        self.assertEqual(payload["stock_flow"]["inflow_10d"], 55_000_000.0)
+
+    def test_capital_flow_direct_request_failure_is_explicit_without_fallback(self) -> None:
+        adapter = AkshareFundamentalAdapter()
+
+        with patch(
+            "data_provider.fundamental_adapter._fetch_eastmoney_stock_fund_flow",
+            side_effect=ConnectionError("upstream closed"),
+        ), patch.object(
+            adapter,
+            "_call_df_candidates",
+            side_effect=AssertionError("market-wide fallback must not run"),
+        ):
+            payload = adapter.get_capital_flow("603602")
+
+        self.assertEqual(payload["status"], "failed")
+        self.assertEqual(payload["stock_flow"], {})
+        self.assertIn("eastmoney_stock_fflow:ConnectionError", payload["errors"])
+
+    def test_eastmoney_flow_request_is_single_stock_and_bounded(self) -> None:
+        response = unittest.mock.Mock()
+        response.json.return_value = {
+            "data": {"klines": ["2026-06-01,100,0,0,0,0,0,0,0,0,0,10.0,1.2"]}
+        }
+        response.raise_for_status.return_value = None
+
+        with patch.object(
+            fundamental_adapter_module.requests,
+            "get",
+            return_value=response,
+        ) as request_get:
+            frame = fundamental_adapter_module._fetch_eastmoney_stock_fund_flow(
+                "600519",
+                "sh",
+                timeout_seconds=1.25,
+            )
+
+        self.assertEqual(frame.iloc[0]["主力净流入-净额"], "100")
+        _, kwargs = request_get.call_args
+        self.assertEqual(kwargs["timeout"], 1.25)
+        self.assertEqual(kwargs["params"]["secid"], "1.600519")
+        self.assertEqual(request_get.call_count, 1)
+
     def test_parse_dividend_plan_to_per_share_supports_cn_patterns(self) -> None:
         self.assertAlmostEqual(_parse_dividend_plan_to_per_share("10派3元(含税)"), 0.3, places=6)
         self.assertAlmostEqual(_parse_dividend_plan_to_per_share("每10股派发2.5元"), 0.25, places=6)

@@ -205,3 +205,33 @@ def test_stock_data_falls_back_after_sina_timeout(monkeypatch) -> None:
     result = fetcher._fetch_stock_data("605218", "2026-05-01", "2026-05-25")
 
     assert result is tx_df
+
+
+def test_market_stats_calls_use_existing_timeout_wrapper(monkeypatch) -> None:
+    calls = []
+
+    def direct_call_should_not_run():
+        raise AssertionError("market stats must use the timeout wrapper")
+
+    fake_akshare = SimpleNamespace(
+        stock_zh_a_spot_em=direct_call_should_not_run,
+        stock_zh_a_spot=direct_call_should_not_run,
+    )
+    monkeypatch.setitem(sys.modules, "akshare", fake_akshare)
+
+    def fake_call(func, *args, timeout=None, call_name="", **kwargs):
+        calls.append((func, timeout, call_name))
+        raise TimeoutError(f"{call_name} timeout")
+
+    monkeypatch.setattr(
+        "data_provider.akshare_fetcher._akshare_call_with_timeout",
+        fake_call,
+    )
+    fetcher = AkshareFetcher(sleep_min=0, sleep_max=0)
+    fetcher._history_call_timeout = 7
+
+    assert fetcher.get_market_stats() is None
+    assert calls == [
+        (fake_akshare.stock_zh_a_spot_em, 7, "ak.stock_zh_a_spot_em"),
+        (fake_akshare.stock_zh_a_spot, 7, "ak.stock_zh_a_spot"),
+    ]

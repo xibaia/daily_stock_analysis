@@ -3456,6 +3456,8 @@ class DataFetcherManager:
         adapter_status = str(payload.get("status", "not_supported"))
         if has_stock_flow or has_sector_rankings:
             capital_flow_status = "ok"
+        elif adapter_status == "failed":
+            capital_flow_status = "failed"
         elif adapter_status == "not_supported":
             capital_flow_status = "not_supported"
         else:
