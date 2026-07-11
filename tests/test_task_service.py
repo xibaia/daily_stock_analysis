@@ -44,6 +44,35 @@ class _FakePipeline:
 
 
 class TestTaskService(unittest.TestCase):
+    def test_prune_tasks_removes_old_terminal_tasks_and_preserves_running(self):
+        service = TaskService()
+        service._max_tasks_cache = 3
+        service._tasks = {
+            "running-old": {"status": "running", "start_time": "2026-01-01T00:00:00"},
+            "failed-old": {"status": "failed", "start_time": "2026-01-01T00:00:01"},
+            "completed-new": {"status": "completed", "start_time": "2026-01-01T00:00:02"},
+            "running-new": {"status": "running", "start_time": "2026-01-01T00:00:03"},
+        }
+
+        service._prune_tasks()
+
+        self.assertEqual(
+            set(service._tasks),
+            {"running-old", "completed-new", "running-new"},
+        )
+
+    def test_prune_tasks_never_discards_running_tasks_to_force_limit(self):
+        service = TaskService()
+        service._max_tasks_cache = 1
+        service._tasks = {
+            "running-1": {"status": "running", "start_time": "2026-01-01T00:00:00"},
+            "running-2": {"status": "running", "start_time": "2026-01-01T00:00:01"},
+        }
+
+        service._prune_tasks()
+
+        self.assertEqual(set(service._tasks), {"running-1", "running-2"})
+
     def test_run_analysis_marks_failed_for_unsuccessful_result(self):
         service = TaskService()
         service._tasks = {}

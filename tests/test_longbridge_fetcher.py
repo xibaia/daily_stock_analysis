@@ -518,6 +518,25 @@ class TestLongbridgeFetcherMocked(unittest.TestCase):
         # total_mv
         self.assertAlmostEqual(quote.total_mv, 253.79 * 16000000000, places=0)
 
+    def test_static_info_cache_is_bounded_and_recent_hits_are_retained(self):
+        fetcher, ctx = self._make_fetcher_with_mock_ctx()
+        fetcher._static_cache_max_entries = 2
+        ctx.static_info.side_effect = lambda symbols: [
+            self._make_mock_static(name_en=symbols[0])
+        ]
+
+        with patch(
+            "data_provider.longbridge_fetcher._static_info_ttl_seconds",
+            return_value=600,
+        ):
+            fetcher._get_static_info("A.US")
+            fetcher._get_static_info("B.US")
+            fetcher._get_static_info("A.US")
+            fetcher._get_static_info("C.US")
+
+        self.assertEqual(list(fetcher._static_cache), ["A.US", "C.US"])
+        self.assertEqual(ctx.static_info.call_count, 3)
+
     def test_turnover_falls_back_to_total_shares_when_circulating_zero(self):
         """US API often reports circulating_shares=0; use total_shares for turnover."""
         fetcher, ctx = self._make_fetcher_with_mock_ctx()

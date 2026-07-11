@@ -430,6 +430,7 @@ class LongbridgeFetcher(BaseFetcher):
         # {symbol: (StaticInfo, timestamp)}
         self._static_cache: Dict[str, Any] = {}
         self._static_cache_lock = threading.Lock()
+        self._static_cache_max_entries = 1000
 
     def _is_connection_error(self, exc: Exception) -> bool:
         msg = str(exc).lower()
@@ -631,7 +632,11 @@ class LongbridgeFetcher(BaseFetcher):
             with self._static_cache_lock:
                 cached = self._static_cache.get(symbol)
                 if cached and (now - cached[1]) < ttl:
+                    self._static_cache.pop(symbol)
+                    self._static_cache[symbol] = cached
                     return cached[0]
+                if cached:
+                    self._static_cache.pop(symbol, None)
 
         ctx = self._get_ctx()
         if ctx is None:
@@ -643,6 +648,9 @@ class LongbridgeFetcher(BaseFetcher):
                 if ttl > 0:
                     with self._static_cache_lock:
                         self._static_cache[symbol] = (info, now)
+                        while len(self._static_cache) > self._static_cache_max_entries:
+                            oldest_symbol = next(iter(self._static_cache))
+                            self._static_cache.pop(oldest_symbol)
                 return info
         except Exception as e:
             logger.debug(f"[Longbridge] static_info({symbol}) 失败: {e}")

@@ -46,6 +46,7 @@ class TaskService:
         self._max_workers = max_workers
         self._tasks: Dict[str, Dict[str, Any]] = {}
         self._tasks_lock = threading.Lock()
+        self._max_tasks_cache = 200
 
     @classmethod
     def get_instance(cls) -> 'TaskService':
@@ -134,6 +135,26 @@ class TaskService:
         tasks.sort(key=lambda x: x.get('start_time', ''), reverse=True)
         return tasks[:limit]
 
+    def _prune_tasks(self) -> None:
+        """Remove oldest terminal tasks without discarding in-flight status."""
+        with self._tasks_lock:
+            overflow = len(self._tasks) - self._max_tasks_cache
+            if overflow <= 0:
+                return
+            terminal_tasks = sorted(
+                (
+                    (task_id, task)
+                    for task_id, task in self._tasks.items()
+                    if task.get("status") in {"completed", "failed"}
+                ),
+                key=lambda item: (
+                    item[1].get("end_time", item[1].get("start_time", "")),
+                    item[0],
+                ),
+            )
+            for task_id, _task in terminal_tasks[:overflow]:
+                self._tasks.pop(task_id, None)
+
     def get_analysis_history(
         self,
         code: Optional[str] = None,
@@ -216,6 +237,7 @@ class TaskService:
                     })
 
                 logger.info(f"[TaskService] 股票 {code} 分析完成: {result.operation_advice}")
+                self._prune_tasks()
                 return {"success": True, "task_id": task_id, "result": result_data}
             else:
                 fail_message = "分析返回空结果"
@@ -229,6 +251,7 @@ class TaskService:
                     })
 
                 logger.warning(f"[TaskService] 股票 {code} 分析失败: {fail_message}")
+                self._prune_tasks()
                 return {"success": False, "task_id": task_id, "error": fail_message}
 
         except Exception as e:
@@ -242,6 +265,7 @@ class TaskService:
                     "error": error_msg
                 })
 
+            self._prune_tasks()
             return {"success": False, "task_id": task_id, "error": error_msg}
 
 
