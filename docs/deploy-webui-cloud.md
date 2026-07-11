@@ -276,6 +276,32 @@ python main.py --webui-only
 
 ---
 
+## 可选：回填已有股票的近期日线
+
+`stock_daily` 已有股票可以通过审核过的回填命令补齐近期数据。先预览股票范围，不访问数据源或写数据库：
+
+```bash
+python3 scripts/backfill_stock_daily.py --dry-run
+python3 scripts/backfill_stock_daily.py --dry-run --codes 600519,000001
+```
+
+执行回填时 `days` 和 `workers` 必须大于 0；默认执行前使用 SQLite 在线备份 API 生成一致性备份：
+
+```bash
+python3 scripts/backfill_stock_daily.py --days 15 --workers 3
+```
+
+Docker 镜像只包含该审核过的运维脚本，不会复制整个本地 `scripts/` 目录：
+
+```bash
+docker compose -f docker/docker-compose.yml run --rm analyzer \
+  python scripts/backfill_stock_daily.py --days 15 --workers 3
+```
+
+单个股票失败会在最终摘要中列出并使命令返回非零，但不会回滚其他股票已经完成的幂等 UPSERT。需要数据回滚时，先停止所有应用进程，再用命令输出的 `.backup.<时间>` 文件替换原 SQLite 数据库；不要在服务运行中直接覆盖数据库文件。
+
+---
+
 ## 可选：Nginx 反向代理（绑定域名 / 80 端口）
 
 如果你有域名，或者不想在地址里带 `:8000`，可以用 Nginx 做反向代理，把 80/443 端口流量转发给后端服务。

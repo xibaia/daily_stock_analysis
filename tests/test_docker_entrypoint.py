@@ -37,6 +37,13 @@ def test_dockerfile_bundles_default_alphasift_adapter() -> None:
     assert "import alphasift.dsa_adapter" in dockerfile
 
 
+def test_dockerfile_copies_only_reviewed_backfill_script() -> None:
+    dockerfile = (REPO_ROOT / "docker" / "Dockerfile").read_text(encoding="utf-8")
+
+    assert "COPY scripts/backfill_stock_daily.py ./scripts/backfill_stock_daily.py" in dockerfile
+    assert "COPY scripts/ ./scripts/" not in dockerfile
+
+
 def test_docker_entrypoint_repairs_ownership_and_user_permissions() -> None:
     entrypoint = (REPO_ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
 

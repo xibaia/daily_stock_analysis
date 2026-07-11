@@ -53,6 +53,17 @@ class StockRepository:
         except Exception as e:
             logger.error(f"获取最新数据失败: {e}")
             return []
+
+    def list_daily_codes(self) -> List[str]:
+        """Return sorted distinct symbols currently present in stock_daily."""
+        with self.db.get_session() as session:
+            return list(
+                session.execute(
+                    select(StockDaily.code)
+                    .distinct()
+                    .order_by(StockDaily.code)
+                ).scalars().all()
+            )
     
     def get_range(
         self,

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 > For user-friendly release highlights, see the [GitHub Releases](https://github.com/ZhuLinsen/daily_stock_analysis/releases) page.
 
 ## [Unreleased]
+- [新功能] 新增安全的 `stock_daily` 近期数据回填命令，支持 dry-run、正参数校验、有界并发、逐股票失败摘要、SQLite 在线备份和幂等 UPSERT；Docker 仅包含该审核过的脚本入口。
 - [修复] Web 复制操作统一使用安全上下文 Clipboard API，并在 HTTP/intranet 或 API 不可用时同步回退到 `execCommand`，覆盖报告、诊断、聊天与 JSON 视图且保证临时 DOM 清理。
 - [修复] 企业微信发送器、能力元数据和系统配置统一支持并默认使用 `markdown_v2`，保留 `markdown`/`text` 兼容模式及现有图片、分片路径。
 - [修复] 为单例异步任务状态和 Longbridge 静态信息缓存增加线程安全的有界淘汰；运行中任务不会为强制达标而被删除，固定键或单次服务生命周期缓存不再叠加无意义的 LRU 层。
