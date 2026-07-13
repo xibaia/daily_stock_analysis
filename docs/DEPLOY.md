@@ -94,12 +94,15 @@ docker-compose -f ./docker/docker-compose.yml exec -u dsa stock-analyzer python 
 
 数据自动保存在宿主机目录：
 - `./data/` - 数据库文件
+- `./config/.env` - Web 设置产生的持久化配置覆盖项（首次保存后自动创建）
 - `./logs/` - 日志文件
 - `./reports/` - 分析报告
 
+根目录 `.env` 仍是部署基线；Compose 会在其后加载可选的 `config/.env`，因此 Web 保存的同名应用配置优先，并在容器重建后保留。`API_PORT`、`API_BIND_ADDRESS` 等 Compose 拓扑参数仍由根 `.env` 管理。旧版本已有 Web 设置时，请在删除旧容器前执行 `mkdir -p config && docker cp stock-server:/app/.env ./config/.env`。完整迁移与回滚步骤见 `docs/deploy-webui-cloud.md`。
+
 ### 6. 权限说明
 
-Docker 镜像启动入口会自动创建并修复 `./data`、`./logs`、`./reports` 对应挂载目录的权限，然后降权为非 root 用户 (`dsa`, UID 1000) 运行应用。普通部署不需要手动 `chown` / `chmod`。
+Docker 镜像启动入口会自动创建并修复 `./data`、`./config`、`./logs`、`./reports` 对应挂载目录的权限，然后降权为非 root 用户 (`dsa`, UID 1000) 运行应用。普通部署不需要手动 `chown` / `chmod`。
 
 如果你显式指定了 `--user` / Compose `user:`，或使用只读挂载、rootless Docker、NFS 等不允许容器修复属主的环境，请确保实际运行用户对这些目录具备写入权限。
 

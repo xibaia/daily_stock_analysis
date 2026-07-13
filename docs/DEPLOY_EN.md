@@ -90,12 +90,15 @@ docker-compose -f ./docker/docker-compose.yml exec -u dsa stock-analyzer python 
 
 Data is automatically saved to host directories:
 - `./data/` - Database files
+- `./config/.env` - Persistent Web settings overrides (created after the first save)
 - `./logs/` - Log files
 - `./reports/` - Analysis reports
 
+The root `.env` remains the deployment baseline. Compose loads the optional `config/.env` afterward, so Web-saved application values take precedence and survive container replacement. Compose topology values such as `API_PORT` and `API_BIND_ADDRESS` remain managed by the root `.env`. If an older container already contains Web-saved settings, run `mkdir -p config && docker cp stock-server:/app/.env ./config/.env` before removing it. See `docs/deploy-webui-cloud.md` for the complete migration and rollback procedure.
+
 ### 6. Permissions
 
-The Docker image startup entrypoint automatically creates and fixes ownership for the mounted `./data`, `./logs`, and `./reports` directories, then drops privileges to the non-root `dsa` user (UID 1000). Normal deployments do not require manual host-side `chown` / `chmod`.
+The Docker image startup entrypoint automatically creates and fixes ownership for the mounted `./data`, `./config`, `./logs`, and `./reports` directories, then drops privileges to the non-root `dsa` user (UID 1000). Normal deployments do not require manual host-side `chown` / `chmod`.
 
 If you explicitly set `--user` / Compose `user:`, or use read-only mounts, rootless Docker, NFS, or another environment that prevents the container from fixing ownership, make sure the actual runtime user can write to these directories.
 

@@ -81,15 +81,30 @@ WEBUI_PORT=8888
 
 项目的 `docker/docker-compose.yml` 在容器内部已经自动设置了 `WEBUI_HOST=0.0.0.0`，你不需要在 `.env` 里再改监听地址，Docker 会自动处理。
 
-Docker Compose 中的 `env_file: ../.env` 只会把 `.env` 作为**启动环境变量**注入容器，不会在容器内创建 `/app/.env`，也不会让 WebUI 保存配置时回写宿主机 `.env`。新版 WebUI 会在活跃 `.env` 文件缺少某些键时展示启动注入的同名环境变量作为兜底，因此页面上能看到 Docker 启动时注入的配置；但“导出 `.env`”仍只导出当前活跃配置文件内容。
+Docker Compose 使用两层配置：
 
-如果希望 WebUI 中保存的配置在容器删除、重建或升级后继续保留，请把活跃配置文件放到已挂载的数据卷中，例如在 Compose 的 `environment` 中增加：
+- 根目录 `.env` 是部署基线，适合保存首次部署和运维管理的配置。
+- `config/.env` 是可选的持久化覆盖层，WebUI 保存的应用设置会写入这里；同名键优先于根目录 `.env`。
 
-```yaml
-- ENV_FILE=/app/data/runtime.env
+Compose 将宿主机 `config/` 目录挂载到 `/app/config`，并通过 `ENV_FILE=/app/config/.env` 让 WebUI 直接读写覆盖层。`config/.env` 不存在时也可以正常首次启动，第一次在设置页保存后会自动创建。容器入口会修复该目录权限，因此删除、重建或升级容器不会清除 Web 设置。
+
+`API_PORT`、`API_BIND_ADDRESS` 等决定宿主机端口映射的 Compose 拓扑项仍以根目录 `.env` 为准，因为 Compose 在加载服务容器环境之前就会解析 `${...}`。这类部署参数应继续由运维修改根 `.env`，不属于 Web 持久化覆盖层的接管范围。
+
+从旧版本升级且已经在 Web 设置页修改过配置时，必须在删除旧容器前迁移旧的容器内配置：
+
+```bash
+mkdir -p config
+docker cp stock-server:/app/.env ./config/.env
+chmod 600 ./config/.env
 ```
 
-同时保留 `../data:/app/data` 挂载。注意：如果启动时的 `../.env`、`docker run -e` 或 Compose `environment:` 里还保留同名旧值，容器重启后这些启动环境变量仍可能覆盖运行时文件中的保存值；要让 WebUI 保存值接管，请同步更新或移除启动环境中的同名配置。
+如果 `docker cp` 提示 `/app/.env` 不存在，说明旧容器没有产生 Web 配置覆盖文件，可以跳过。迁移后可继续按正常方式重建：
+
+```bash
+docker compose -f docker/docker-compose.yml up -d --build server
+```
+
+不要把 `config/.env` 提交到 Git；仓库的 `*.env` 忽略规则已覆盖该文件。需要回滚时，先备份 `config/.env`，再移除 Compose 中的 `/app/config` 挂载和 `ENV_FILE` 设置，即可恢复为仅使用根目录 `.env`。
 
 ### 第二步：启动服务
 
