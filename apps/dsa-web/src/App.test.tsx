@@ -76,6 +76,7 @@ function makeAuthState(overrides: Partial<AuthState> = {}): AuthState {
   return {
     authEnabled: false,
     loggedIn: false,
+    role: null,
     passwordSet: false,
     passwordChangeable: false,
     setupState: 'no_password',
@@ -140,6 +141,22 @@ describe('App routing behavior', () => {
     expect(await screen.findByTestId('token-usage-page')).toBeInTheDocument();
     expect(setCurrentRoute).toHaveBeenCalledWith('/usage');
     expect(screen.queryByTestId('home-page')).not.toBeInTheDocument();
+  });
+
+  it('redirects read-only users away from settings', async () => {
+    vi.mocked(AuthContext.useAuth).mockReturnValue(makeAuthState({
+      authEnabled: true,
+      loggedIn: true,
+      role: 'user',
+      setupState: 'enabled',
+    }));
+    window.history.pushState({}, '', '/settings');
+
+    render(<App />);
+
+    expect(await screen.findByTestId('home-page')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
+    expect(screen.queryByTestId('settings-page')).not.toBeInTheDocument();
   });
 
   it('routes /decision-signals to the AI signals page after auth is ready', async () => {

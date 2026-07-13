@@ -34,6 +34,7 @@ const Probe = () => {
   return (
     <div>
       <span data-testid="status">{auth.loggedIn ? 'logged-in' : 'logged-out'}</span>
+      <span data-testid="role">{auth.role ?? 'none'}</span>
       <span data-testid="password-set">{auth.passwordSet ? 'set' : 'unset'}</span>
       <button type="button" onClick={() => void auth.login('passwd6', 'passwd6')}>
         trigger-login
@@ -55,12 +56,14 @@ describe('AuthContext', () => {
       .mockResolvedValueOnce({
         authEnabled: true,
         loggedIn: false,
+        role: null,
         passwordSet: false,
         passwordChangeable: true,
       })
       .mockResolvedValueOnce({
         authEnabled: true,
         loggedIn: true,
+        role: 'admin',
         passwordSet: true,
         passwordChangeable: true,
       });
@@ -76,6 +79,7 @@ describe('AuthContext', () => {
     fireEvent.click(screen.getByRole('button', { name: 'trigger-login' }));
 
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('logged-in'));
+    expect(screen.getByTestId('role')).toHaveTextContent('admin');
     expect(screen.getByTestId('password-set')).toHaveTextContent('set');
   });
 

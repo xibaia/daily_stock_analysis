@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 > For user-friendly release highlights, see the [GitHub Releases](https://github.com/ZhuLinsen/daily_stock_analysis/releases) page.
 
 ## [Unreleased]
+- [修复] Web 认证上下文同步管理员/只读用户角色，修复只读权限路由保护导致前端生产构建失败的问题。
 - [新功能] 支持可选的只读 Web 用户角色，并由认证中间件统一限制写操作和系统配置访问。
 - [修复] LiteLLM 根据 YAML route 的 `model_info.dsa_thinking` 显式桥接 Anthropic 顶层 thinking 参数，普通分析与 Agent 共用且不再按模型名猜测；Docker 入口动态修复 efinance 及受限可配置缓存目录权限。
 - [新功能] 新增 opt-in 的低内存 systemd 调度模式，以带互斥锁的一次性 analyzer 容器执行分析，支持 `SCHEDULE_TIMES` 多时点和无副作用的 unit 渲染验证，并与默认 Web/API runtime scheduler 明确互斥。

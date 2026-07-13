@@ -3,6 +3,7 @@ import apiClient from './index';
 export type AuthStatusResponse = {
   authEnabled: boolean;
   loggedIn: boolean;
+  role?: 'admin' | 'user' | null;
   passwordSet?: boolean;
   passwordChangeable?: boolean;
   setupState: 'enabled' | 'password_retained' | 'no_password';

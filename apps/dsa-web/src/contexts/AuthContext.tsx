@@ -7,6 +7,7 @@ import { useStockPoolStore } from '../stores';
 type AuthContextValue = {
   authEnabled: boolean;
   loggedIn: boolean;
+  role: 'admin' | 'user' | null;
   passwordSet: boolean;
   passwordChangeable: boolean;
   setupState: 'enabled' | 'password_retained' | 'no_password';
@@ -41,6 +42,7 @@ function extractLoginError(err: unknown): ParsedApiError {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [authEnabled, setAuthEnabled] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [role, setRole] = useState<'admin' | 'user' | null>(null);
   const [passwordSet, setPasswordSet] = useState(false);
   const [passwordChangeable, setPasswordChangeable] = useState(false);
   const [setupState, setSetupState] = useState<'enabled' | 'password_retained' | 'no_password'>('no_password');
@@ -54,6 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const status = await authApi.getStatus();
       setAuthEnabled(status.authEnabled);
       setLoggedIn(status.loggedIn);
+      setRole(status.role ?? null);
       setPasswordSet(status.passwordSet ?? false);
       setPasswordChangeable(status.passwordChangeable ?? false);
       setSetupState(status.setupState);
@@ -64,6 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoadError(getParsedApiError(err));
       setAuthEnabled(false);
       setLoggedIn(false);
+      setRole(null);
       setPasswordSet(false);
       setPasswordChangeable(false);
       setSetupState('no_password');
@@ -129,6 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         authEnabled,
         loggedIn,
+        role,
         passwordSet,
         passwordChangeable,
         setupState,
