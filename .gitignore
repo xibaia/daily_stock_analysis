@@ -13,6 +13,7 @@
 # 本地评审与高级路由配置（可能包含敏感信息或临时分析产物）
 /.codex
 /.tmp
+/.codegraph/
 /review.md
 /litellm_config.yaml
 /litellm_config.*.yaml
@@ -55,6 +56,7 @@ env/
 
 # 数据和日志
 /data/
+/config/
 /.llm_usage_hmac_secret
 **/.llm_usage_hmac_secret
 logs/
@@ -82,6 +84,7 @@ verify_*.py
 .claude/*
 !.claude/skills/
 !.claude/skills/**
+/.claude/skills/tushare/
 
 # ignore static files
 static/
